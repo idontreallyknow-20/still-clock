@@ -238,3 +238,10 @@ body.lite .card { filter: none; }
 body.lite .face-root.entering, body.lite .face-root.leaving { filter: none; }
 body.lite #panel { backdrop-filter: none; -webkit-backdrop-filter: none; background: rgba(13, 14, 21, .95); }
 body.lite #gear, body.lite #toast, body.lite #fslock { backdrop-filter: none; -webkit-backdrop-filter: none; }
+
+/* Installed app: in the frameless (window-controls-overlay) window the page fills the title bar,
+   so this invisible strip keeps the window draggable. */
+#titlebar { display: none; }
+body.wco #titlebar { display: block; position: fixed; z-index: 30; top: env(titlebar-area-y, 0); left: env(titlebar-area-x, 0);
+  width: env(titlebar-area-width, 100%); height: env(titlebar-area-height, 32px); app-region: drag; -webkit-app-region: drag; }
+body.wco #hint { top: calc(env(titlebar-area-height, 32px) + 18px); }
