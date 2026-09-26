@@ -82,13 +82,15 @@ function Glass() {
 }
 
 /* ============ SWARM — thousands of particles that hold the shape of the time ============ */
+/* palettes can change without their name changing (the live Sky, album art), so caches key on the colours */
+const palKeyOf = p => p.a + p.b + p.c + p.t1 + p.t2;
 function Swarm() {
   let cv, ctx, gcv, gctx, W, H, P = [], dying = [], str = '', box = { cx: 0, cy: 0, bottom: 0, left: 0, w: 1 }, cols = [], palName = '';
   const mouse = FX.mouse, NB = 8;
   const buckets = Array.from({ length: NB }, () => []);
 
   function colors() {
-    const p = pal(); palName = Store.get('palette');
+    const p = pal(); palName = palKeyOf(p);
     const stops = [p.t1, p.t2, p.a, p.b, p.c];
     cols = Array.from({ length: NB }, (_, i) => {
       const t = i / (NB - 1) * (stops.length - 1), j = Math.min(stops.length - 2, Math.floor(t));
@@ -182,7 +184,7 @@ function Swarm() {
     },
     relayout() { resize(); if (str) retarget(str, false); },
     frame(dt, now) {
-      if (palName !== Store.get('palette')) { colors(); if (str) retarget(str, false); }
+      if (palName !== palKeyOf(pal())) colors();
       const k = Math.min(3, dt / 16.67), calm = Store.get('motion') === 'calm';
       ctx.globalCompositeOperation = 'destination-out';
       ctx.fillStyle = `rgba(0,0,0,${calm ? 0.6 : 0.3})`;

@@ -933,4 +933,4 @@ function frame(dt, now) {
 }
 
 applyQuality();
-window.GL3D = { get weather() { return !lost; }, frame, resize, pulse, Orbit, Swarm, Nova, get time() { return T; }, get debug() { return { rain: rainGeo.instanceCount, snow: snowGeo.instanceCount }; } };
+window.GL3D = { get weather() { return !lost; }, frame, resize, pulse, Orbit, Swarm, Nova, get time() { return T; }, get debug() { return { rain: rainGeo.instanceCount, snow: snowGeo.instanceCount, pal: palKey }; } };

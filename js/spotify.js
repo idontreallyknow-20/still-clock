@@ -28,7 +28,8 @@ window.Spotify = (() => {
       client_id: clientId(), response_type: 'code', redirect_uri: redirect(), code_challenge_method: 'S256', code_challenge: ch, scope: SCOPES,
     });
   }
-  function disconnect() { save(null); now = null; lastTrack = ''; window.MUSICPAL = null; window.StillPalette && StillPalette(); renderCard(); UI.toast('Spotify disconnected'); }
+  function signOut() { save(null); now = null; lastTrack = ''; if (window.MUSICPAL) { window.MUSICPAL = null; window.StillPalette && StillPalette(); } renderCard(); }
+  function disconnect() { signOut(); UI.toast('Spotify disconnected'); }
 
   async function token(params) {
     const r = await fetch('https://accounts.spotify.com/api/token', {
@@ -36,7 +37,7 @@ window.Spotify = (() => {
       body: new URLSearchParams({ client_id: clientId(), ...params }),
     });
     const j = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error(j.error_description || j.error || 'HTTP ' + r.status);
+    if (!r.ok) throw Object.assign(new Error(j.error_description || j.error || 'HTTP ' + r.status), { refused: true });
     save({ access: j.access_token, refresh: j.refresh_token || (tok && tok.refresh), exp: Date.now() + (j.expires_in - 60) * 1000 });
   }
 
@@ -47,7 +48,7 @@ window.Spotify = (() => {
     history.replaceState(null, '', location.pathname);
     if (err) return UI.toast('Spotify sign-in cancelled', 2400);
     let v = null; try { v = localStorage.getItem(VKEY); localStorage.removeItem(VKEY); } catch (e) {}
-    try { await token({ grant_type: 'authorization_code', code, redirect_uri: redirect(), code_verifier: v }); UI.toast('Spotify connected', 2200); poll(); }
+    try { await token({ grant_type: 'authorization_code', code, redirect_uri: redirect(), code_verifier: v }); UI.toast('Spotify connected', 2200); }
     catch (e) { UI.toast('Spotify: ' + e.message, 4000); }
   }
 
@@ -55,7 +56,10 @@ window.Spotify = (() => {
     if (!tok) return null;
     if (Date.now() > tok.exp) {
       try { await token({ grant_type: 'refresh_token', refresh_token: tok.refresh }); }
-      catch (e) { save(null); UI.toast('Spotify signed out, connect again in settings', 3000); return null; }
+      catch (e) {
+        if (e.refused) { signOut(); UI.toast('Spotify signed out, connect again in settings', 3000); }
+        return null; /* offline for a moment: keep the sign-in and try again on the next poll */
+      }
     }
     const r = await fetch('https://api.spotify.com/v1' + path, { method, headers: { Authorization: 'Bearer ' + tok.access } });
     if (r.status === 401) { tok.exp = 0; return null; }
@@ -69,8 +73,10 @@ window.Spotify = (() => {
   }
 
   /* ---------- polling: every 3 s while visible, and the progress bar runs smoothly in between ---------- */
+  let pollId = 0;
   async function poll() {
     clearTimeout(pollT);
+    const id = ++pollId;
     if (tok && !document.hidden) {
       try {
         const j = await api('/me/player?additional_types=episode');
@@ -82,8 +88,10 @@ window.Spotify = (() => {
           };
         } else if (j) now = null;
       } catch (e) {}
+      if (id !== pollId) return;
       renderCard();
     }
+    clearTimeout(pollT);
     pollT = setTimeout(poll, tok ? 3000 : 30000);
   }
   document.addEventListener('visibilitychange', () => { if (!document.hidden) poll(); });
