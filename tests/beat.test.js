@@ -34,5 +34,15 @@ check(slow >= want / 2 && slow <= want, `10 fps, jittery (a struggling screen): 
 check(run({ fps: 60, kicks: false }) === 0, 'a steady drone with no kicks: no beats');
 const fast = run({ fps: 60, period: 60 / 175 });
 check(Math.abs(fast - Math.round(6 / (60 / 175))) <= 1, `175 BPM: ${fast} beats for ${Math.round(6 / (60 / 175))} kicks`);
+/* the mic switching on (or a song pausing) gives true silence, then sound: a quiet sound must not read as a big kick */
+{
+  const det = BeatDetector(); let t = 10000, maxQuiet = 0, maxLoud = 0;
+  det(0, t); t += 16.7;                                                     // silence: the analyser's first frame
+  for (let i = 0; i < 30; i++, t += 16.7) maxQuiet = Math.max(maxQuiet, det(1e-6 * (i % 12 === 0 ? 4 : 1), t));   // -60 dB, faint pulses
+  check(maxQuiet <= 0.5, `after silence, a -60 dB sound pulses gently (strength ${maxQuiet.toFixed(2)}, max 1.4)`);
+  const d2 = BeatDetector(); t = 10000; d2(0, t); t += 16.7;
+  for (let i = 0; i < 60; i++, t += 16.7) { const tb = (i * 16.7 / 1000) % 0.5; maxLoud = Math.max(maxLoud, d2(1e-3 * (Math.exp(-tb * 18) ** 2 + 0.02), t)); }
+  check(maxLoud >= 0.8, `after silence, loud kicks still hit hard (strength ${maxLoud.toFixed(2)})`);
+}
 console.log(fails ? `\n${fails} FAILED` : '\nALL GREEN');
 process.exit(fails ? 1 : 0);

@@ -40,7 +40,6 @@ window.FX = (() => {
     par.x += (mouse.nx - par.x) * 0.04; par.y += (mouse.ny - par.y) * 0.04;
     if (!busy && clean) return;
     ctx.clearRect(0, 0, W, H);
-    clean = !busy;
 
     ctx.globalCompositeOperation = 'lighter';
 
@@ -84,6 +83,7 @@ window.FX = (() => {
       } else ctx.fillRect(q.x - q.s / 2, q.y - q.s / 2, q.s, q.s);
     }
     ctx.globalAlpha = 1;
+    clean = !(shoots.length || rings.length || parts.length);   // judged after this frame's updates, so the skip starts at once
   }
 
   addEventListener('pointermove', e => {
