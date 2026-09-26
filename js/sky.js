@@ -290,26 +290,52 @@ window.Sky = (() => {
     /* the glitter path of the moon or sun */
     ctx.globalCompositeOperation = 'lighter';
     if (glint && glint.a > 0.02 && glint.x > -200 && glint.x < W + 200) {
-      const t = now * 0.001, span = H - ly, colW = 14 + span * 0.3;
+      const t = now * 0.001, span = H - ly, moon = glint.moon, colW = (14 + span * 0.3) * (moon ? 1.5 : 1);
+      if (moon) {
+        const ga = glint.a * (1 - frozen * 0.6);
+        /* moonlight spilling across the river: a wide, low pool of cool light around the path */
+        const R2 = Math.max(W * 0.42, span * 1.4);
+        ctx.save(); ctx.translate(glint.x, ly); ctx.scale(1, 0.3);
+        const sg = ctx.createRadialGradient(0, 0, 0, 0, 0, R2);
+        sg.addColorStop(0, css(glint.c, 0.3)); sg.addColorStop(0.3, css(glint.c, 0.1)); sg.addColorStop(1, css(glint.c, 0));
+        ctx.globalAlpha = ga; ctx.fillStyle = sg; ctx.fillRect(-R2, 0, R2 * 2, span / 0.3 + 1);
+        ctx.restore();
+        /* the moon itself mirrored in the water, broken into rippling slices that drift apart with depth */
+        const h = moon.ms, ry = 2 * hy - moon.y;
+        if (ry + h / 2 > ly && ry - h / 2 < H) {
+          for (let s = 0; s + 2 <= h; s += 2) {
+            const y = ry - h / 2 + s;
+            if (y < ly + 1 || y > H) continue;
+            const d = (y - ly) / span, wob = Math.sin(y * 0.45 + t * 2.3) * (1.5 + d * 6) + Math.sin(y * 0.13 - t * 1.1) * 2;
+            ctx.globalAlpha = ga * 0.5 * (0.65 + 0.35 * Math.sin(y * 0.9 + t * 3.1));
+            ctx.drawImage(moonCv, 0, h - s - 2, h, 2, glint.x - h / 2 + wob, y, h * (1 + d * 0.15), 2);
+          }
+        }
+      }
       /* the soft column: stacked bands, each fading in from the shore, so it has no hard edge */
       for (let b = 0; b < 10; b++) {
         const y0 = ly + span * b / 10, w = 8 + (colW - 8) * (b + 0.5) / 10;
         const bg = ctx.createLinearGradient(glint.x - w, 0, glint.x + w, 0);
         bg.addColorStop(0, css(glint.c, 0)); bg.addColorStop(0.5, css(glint.c, 1)); bg.addColorStop(1, css(glint.c, 0));
-        ctx.globalAlpha = glint.a * 0.07 * (1 - frozen * 0.5) * (1 - b / 12); ctx.fillStyle = bg;
+        ctx.globalAlpha = glint.a * (moon ? 0.11 : 0.07) * (1 - frozen * 0.5) * (1 - b / 12); ctx.fillStyle = bg;
         ctx.fillRect(glint.x - w, y0, w * 2, span / 10 + 1);
       }
       ctx.fillStyle = css(glint.c);
       const calmWater = 1 - frozen * 0.8;
       for (let y = ly + 1; y < H; y += 2) {
         const d = (y - ly) / span, row = y | 0;
-        for (let k = 0; k < 3; k++) {
+        for (let k = 0, kn = moon ? 4 : 3; k < kn; k++) {
           const n = hash(row * 1.7 + k * 31.3 + Math.floor(t * (3 + k * 2) + row * 0.37));
           if (n < 0.55) continue;
-          const spread = 4 + d * d * 150, off = (hash(row * 3.1 + k * 7.7 + Math.floor(t * 2 + k)) - 0.5) * 2 * spread * (0.35 + d);
-          const w = (2 + d * 30) * (n - 0.45);
-          ctx.globalAlpha = glint.a * (n - 0.5) * 1.7 * (1 - d * 0.45) * calmWater;
+          const spread = (4 + d * d * 150) * (moon ? 1.4 : 1), off = (hash(row * 3.1 + k * 7.7 + Math.floor(t * 2 + k)) - 0.5) * 2 * spread * (0.35 + d);
+          const w = (2 + d * 30) * (n - 0.45) * (moon ? 1.7 : 1);
+          ctx.globalAlpha = glint.a * (n - 0.5) * (moon ? 2.2 : 1.7) * (1 - d * 0.45) * calmWater;
           ctx.fillRect(glint.x + off - w / 2, y, w, 0.7 + d * 1.3);
+          if (moon && n > 0.985 && calmWater > 0.5) {
+            const s = 3 + d * 7;
+            ctx.globalAlpha = glint.a * 0.9 * calmWater;
+            ctx.drawImage(softDot, glint.x + off - s, y - s * 0.5, s * 2, s);
+          }
         }
       }
     }
@@ -649,6 +675,7 @@ window.Sky = (() => {
         ctx.globalAlpha = a;
         ctx.drawImage(moonCv, mx - ms / 2, my - ms / 2);
         ctx.globalAlpha = 1;
+        if (glint && glint.x === mx) glint.moon = { y: my, ms };
       }
     }
 

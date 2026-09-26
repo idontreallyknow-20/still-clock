@@ -26,6 +26,11 @@ window.UI = (() => {
       { key: 'weather', type: 'seg', opts: [['snow', 'Snow'], ['blizzard', 'Blizzard'], ['fog', 'Fog']] },
       { key: 'lines', label: 'Constellations', type: 'toggle' },
     ]],
+    ['Music · Spotify', [
+      { key: 'showMusic', label: 'Now playing', type: 'toggle' },
+      { key: 'musicColors', label: 'Colours from album art', type: 'toggle' },
+      { type: 'custom', make: () => Spotify.row() },
+    ]],
     ['Motion', [{ key: 'motion', type: 'seg', opts: [['calm', 'Calm'], ['normal', 'Normal'], ['wild', 'Wild']] }]],
     ['Sound', [
       { key: 'sound', label: 'Effects', type: 'toggle' },
@@ -52,6 +57,7 @@ window.UI = (() => {
   panel.querySelector('footer').prepend(foot);
 
   function build(r) {
+    if (r.type === 'custom') return r.make();
     const row = document.createElement('div');
     row.className = 'row row-' + r.type;
     if (r.type === 'seg') {

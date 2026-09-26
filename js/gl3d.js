@@ -31,7 +31,7 @@ const composer = new EffectComposer(renderer);
 const wxPass = new RenderPass(wxScene, wxCam);
 const facePass = new RenderPass(faceScene, faceCam);
 facePass.clear = false; facePass.clearDepth = true;
-const bloom = new UnrealBloomPass(new THREE.Vector2(W, H), 0.95, 0.6, 0.22);
+const bloom = new UnrealBloomPass(new THREE.Vector2(W, H), 0.62, 0.5, 0.34);
 composer.addPass(wxPass); composer.addPass(facePass); composer.addPass(bloom); composer.addPass(new OutputPass());
 
 /* ---------- quality: resolution and effects follow QUALITY.tier (main.js steps it) ---------- */
@@ -40,7 +40,7 @@ function applyQuality() {
   const t = LITE() ? 3 : QUALITY.tier, dpr = devicePixelRatio || 1;
   pr = [Math.min(dpr, 1.5), Math.min(dpr, 1), 0.8, 0.66][t];
   bloom.enabled = !LITE();
-  bloom.strength = [0.95, 0.9, 0.8, 0.7][t];
+  bloom.strength = [0.62, 0.58, 0.52, 0.46][t];
   renderer.setPixelRatio(pr); composer.setPixelRatio(pr);
   resize();
 }
@@ -310,7 +310,7 @@ function timeLabel(face, w = 1024, h = 360) {
   const c = document.createElement('canvas'); c.width = w; c.height = h;
   const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 4;
   const mat = new THREE.MeshBasicMaterial({ ...ADD, map: tex, toneMapped: false, depthTest: false });
-  mat.color.setScalar(1.45);
+  mat.color.setScalar(1.12);
   const mesh = new THREE.Mesh(new THREE.PlaneGeometry(1, h / w), mat);
   mesh.renderOrder = 10;
   let last = '';
@@ -326,8 +326,8 @@ function timeLabel(face, w = 1024, h = 360) {
     gr.addColorStop(0, p.t1); gr.addColorStop(1, p.t2);
     /* three passes: a wide bloom, a tight halo, then the crisp glyphs on top */
     g.fillStyle = gr; g.shadowColor = p.glow;
-    g.globalAlpha = 0.55; g.shadowBlur = fs * 0.34; g.fillText(main, w / 2, y);
-    g.globalAlpha = 0.9; g.shadowBlur = fs * 0.11; g.fillText(main, w / 2, y);
+    g.globalAlpha = 0.3; g.shadowBlur = fs * 0.26; g.fillText(main, w / 2, y);
+    g.globalAlpha = 0.6; g.shadowBlur = fs * 0.08; g.fillText(main, w / 2, y);
     g.globalAlpha = 1; g.shadowBlur = 0; g.fillText(main, w / 2, y);
     if (sub) { g.font = `300 ${h * 0.14}px "JetBrains Mono", Consolas, monospace`; g.fillStyle = p.t2; g.globalAlpha = 0.8; g.fillText(sub, w / 2, h * 0.82); g.globalAlpha = 1; }
     tex.needsUpdate = true;
@@ -564,7 +564,7 @@ const float TAU = 6.2831853;
 void main() { float r = length(vUv), a = atan(vUv.y, vUv.x);
   vec3 base = mix(uC, uC2, .5 + .5 * sin(a + uTime * .2));
   float fl = .8 + .2 * sin(a * 3. + uTime * .9) * sin(a * 5. - uTime * 1.3);
-  float ring = exp(-pow((r - .8) * 46., 2.)) * fl * 1.25 + exp(-pow((r - .8) * 8., 2.)) * .16;
+  float ring = exp(-pow((r - .8) * 46., 2.)) * fl * .8 + exp(-pow((r - .8) * 8., 2.)) * .09;
   float a1 = mod(a - uTime * .22, TAU / 3.);
   float arcs = smoothstep(0., .03, a1) * smoothstep(1.45, 1.4, a1) * exp(-pow((r - .9) * 110., 2.));
   float a2 = mod(-a - uTime * .31, TAU / 2.);

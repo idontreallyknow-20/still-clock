@@ -29,6 +29,7 @@ window.Store = (() => {
     lite: false, lockfs: false,
     brightness: 1, autoDim: false,
     alarmOn: false, alarmTime: '07:00',
+    spClient: '', showMusic: true, musicColors: true,
   };
   const VALID = {
     face: v => FACES.some(f => f[0] === v),
@@ -108,6 +109,8 @@ window.SKYPAL = (() => {
 let skyPalCache = null;
 window.refreshSkyPalette = () => { skyPalCache = SKYPAL(window.Sky && Sky.state); return skyPalCache; };
 window.pal = () => {
+  /* while a song plays, its album art can colour everything (set by spotify.js) */
+  if (window.MUSICPAL) return MUSICPAL;
   const k = Store.get('palette');
   if (k === 'sky') return skyPalCache || refreshSkyPalette();
   return PALETTES[k] || PALETTES.aurora;

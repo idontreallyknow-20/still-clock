@@ -17,6 +17,7 @@
     document.querySelector('meta[name=theme-color]').content = p.bg;
     BG.palette(p, instant);
   }
+  window.StillPalette = () => applyPalette();
   function applyMotion() { body.classList.remove('m-calm', 'm-normal', 'm-wild'); body.classList.add('m-' + Store.get('motion')); }
   function applySize() { root.setProperty('--size', Store.get('size')); }
 
@@ -189,7 +190,7 @@
     safe('face', () => Faces.frame(dt, now, T));
     safe('3d', () => window.GL3D && GL3D.frame(dt, now));
     /* the Sky palette follows the real sky: recompute it every couple of seconds */
-    if (Store.get('palette') === 'sky' && now - lastPal > 2000) { lastPal = now; refreshSkyPalette(); safe('palette', () => applyPalette()); }
+    if (Store.get('palette') === 'sky' && !window.MUSICPAL && now - lastPal > 2000) { lastPal = now; refreshSkyPalette(); safe('palette', () => applyPalette()); }
   }
 
   /* ---------- input ---------- */
@@ -266,6 +267,7 @@
   resize();
   safe('face', () => Faces.show(Store.get('face'), T, true));
   raf(loop);
+  safe('music', () => Spotify.init());
   setTimeout(() => body.classList.remove('booting'), 50);
   setTimeout(() => { const a = Faces.anchor(); BG.pulse(a.x, a.y, 1); }, 900);
   document.fonts && document.fonts.ready.then(() => safe('face', Faces.relayout));

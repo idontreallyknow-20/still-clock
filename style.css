@@ -52,7 +52,7 @@ body.no-date #date, body.no-date #progress { opacity: 0; }
 /* liquid glass: a bright crown fading into tinted glass, a crisp rim of light, and a two-stage glow.
    Nothing here animates while the time is still, so the digits cost nothing between changes. */
 .g-time { display: flex; position: relative;
-  filter: drop-shadow(0 0 .025em color-mix(in srgb, var(--glow) 80%, transparent)) drop-shadow(0 .04em .28em color-mix(in srgb, var(--glow) 38%, transparent)); }
+  filter: drop-shadow(0 0 .02em color-mix(in srgb, var(--glow) 55%, transparent)) drop-shadow(0 .04em .24em color-mix(in srgb, var(--glow) 22%, transparent)); }
 .g-sec { display: flex; font-size: .34em; margin-left: .25em; margin-top: .22em; opacity: .75; }
 .g-sec:empty { margin: 0; }
 .slot { position: relative; display: inline-block; width: .6em; height: 1em; transform-style: preserve-3d; }
@@ -124,7 +124,7 @@ body.m-wild .ch.out { animation: g-out-wild .8s var(--ease) both; }
 .card .b { bottom: 0; border-radius: 0 0 .09em .09em;
   background: linear-gradient(180deg, color-mix(in srgb, var(--a2) 8%, #15161d), color-mix(in srgb, var(--a2) 14%, #0e0f14)); }
 .card b { position: absolute; left: 0; right: 0; height: 200%; display: flex; align-items: center; justify-content: center; font-weight: 500;
-  color: var(--t1); text-shadow: 0 0 .12em color-mix(in srgb, var(--glow) 55%, transparent); }
+  color: var(--t1); text-shadow: 0 0 .1em color-mix(in srgb, var(--glow) 35%, transparent); }
 .card .t b, .card .f b { top: 0; }
 .card .b b, .card .k b { bottom: 0; }
 .card .leaf { position: absolute; left: 0; right: 0; top: 0; height: 50%; transform-origin: 50% 100%; transform-style: preserve-3d; z-index: 3; visibility: hidden; }
@@ -346,3 +346,46 @@ body.alarm-on #alarm { opacity: 1; pointer-events: auto; transform: translate(-5
 @media (hover: hover) and (pointer: fine) { #alarm button:hover { background: rgba(255, 255, 255, .14); } #alarm #alarm-stop:hover { filter: brightness(1.1); } }
 @media (prefers-reduced-motion: reduce) { #alarm { transition: opacity .3s ease; transform: translate(-50%, -50%); } #alarm-time { animation: none; } }
 body.lite #alarm { backdrop-filter: none; -webkit-backdrop-filter: none; background: rgba(13, 14, 21, .95); }
+
+/* now playing: a small glass card, bottom left; the controls fade in on hover or while awake */
+#music { position: fixed; left: 22px; bottom: 22px; z-index: 20; display: flex; align-items: center; gap: 12px; padding: 8px 10px 8px 8px; width: min(340px, calc(100vw - 150px));
+  border-radius: 18px; background: rgba(255, 255, 255, .055); border: 1px solid rgba(255, 255, 255, .08); -webkit-backdrop-filter: blur(16px) saturate(1.3); backdrop-filter: blur(16px) saturate(1.3);
+  opacity: 0; transform: translateY(8px); pointer-events: none; transition: opacity .4s ease, transform .4s cubic-bezier(0.23, 1, 0.32, 1); }
+#music.on { opacity: 1; transform: none; pointer-events: auto; }
+body.idle #music.on { opacity: .6; }
+body.panel-open #music { opacity: 0; pointer-events: none; }
+body.lite #music { -webkit-backdrop-filter: none; backdrop-filter: none; background: rgba(13, 14, 21, .85); }
+#m-art { width: 52px; height: 52px; border-radius: 11px; object-fit: cover; flex: none; box-shadow: 0 6px 22px -6px var(--glow); background: rgba(255, 255, 255, .06); }
+#music.paused #m-art { filter: saturate(.4) brightness(.8); }
+.m-txt { flex: 1; min-width: 0; }
+#m-title { font-size: 13px; font-weight: 500; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#m-artist { font-size: 11.5px; font-weight: 300; color: rgba(255, 255, 255, .6); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 1px; }
+.m-prog { height: 2px; margin-top: 7px; border-radius: 2px; background: rgba(255, 255, 255, .12); overflow: hidden; }
+#m-bar { display: block; height: 100%; background: linear-gradient(90deg, var(--a1), var(--a2)); transform-origin: left; transform: scaleX(0); transition: transform .25s linear; }
+#m-time { font: 400 9.5px var(--mono); letter-spacing: .08em; color: rgba(255, 255, 255, .4); margin-top: 4px; }
+.m-ctl { display: flex; align-items: center; gap: 2px; transition: opacity .3s ease; }
+body.idle .m-ctl { opacity: 0; }
+.m-ctl button { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; color: rgba(255, 255, 255, .75); transition: background-color .2s ease, transform .16s ease; }
+.m-ctl button:active { transform: scale(.92); }
+.m-ctl .m-pp { width: 34px; height: 34px; background: rgba(255, 255, 255, .1); color: #fff; }
+@media (hover: hover) and (pointer: fine) { .m-ctl button:hover { background: rgba(255, 255, 255, .14); } }
+#music .m-play { display: none; } #music.paused .m-play { display: block; } #music.paused .m-pause { display: none; }
+#music.swap .m-txt, #music.swap #m-art { animation: m-in .5s cubic-bezier(0.23, 1, 0.32, 1); }
+@keyframes m-in { from { opacity: 0; transform: translateY(4px); } }
+@media (max-width: 600px) { #music { left: 12px; bottom: 70px; width: calc(100vw - 24px); } }
+@media (prefers-reduced-motion: reduce) { #music, #music.swap .m-txt, #music.swap #m-art { animation: none; transform: none; } }
+
+.sp { display: flex; flex-direction: column; gap: 9px; padding: 8px 0 4px; }
+.sp-status { font: 400 10px var(--mono); letter-spacing: .2em; text-transform: uppercase; color: rgba(255, 255, 255, .45); }
+.sp.on .sp-status { color: #1ed760; }
+.sp-id { display: flex; flex-direction: column; gap: 5px; font-size: 12px; color: rgba(255, 255, 255, .6); }
+.sp-id input, .sp-uri code { font: 400 11.5px var(--mono); color: #fff; background: rgba(255, 255, 255, .06); border: 1px solid rgba(255, 255, 255, .1); border-radius: 10px; padding: 7px 10px; outline: none; }
+.sp-id input:focus-visible { border-color: var(--glow); }
+.sp.on .sp-id, .sp.on .sp-help, .sp.on .sp-uri { display: none; }
+.sp-help { font-size: 11.5px; line-height: 1.5; color: rgba(255, 255, 255, .5); }
+.sp-help b { color: rgba(255, 255, 255, .8); font-weight: 500; }
+.sp-uri { display: flex; gap: 6px; align-items: center; }
+.sp-uri code { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 10.5px; }
+.sp-copy, .sp-go { font-size: 12px; padding: 7px 12px; border-radius: 99px; background: rgba(255, 255, 255, .08); color: #fff; transition: background-color .2s ease; }
+.sp-go { background: #1db954; color: #04150a; font-weight: 500; align-self: flex-start; }
+.sp.on .sp-go { background: rgba(255, 255, 255, .08); color: #fff; }

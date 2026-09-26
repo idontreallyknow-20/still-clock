@@ -15,6 +15,6 @@ http.createServer((req, res) => {
   });
 }).listen(port, '127.0.0.1', () => {
   console.log(`Still is running at  http://127.0.0.1:${port}/`);
-  console.log('Spotify redirect URI: open Settings > Music & video in the page; the exact address is shown there.');
+  console.log('Spotify redirect URI: open Settings > Music · Spotify in the page; the exact address is shown there.');
   console.log('Keep this window open. Press Ctrl+C to stop.');
 });
