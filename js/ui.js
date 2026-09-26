@@ -85,7 +85,7 @@ window.UI = (() => {
       });
       sync.palette = v => {
         row.querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.v === v));
-        name.textContent = PALETTES[v].name;
+        name.textContent = PALETTES[v].name + (v === 'sky' && window.MUSICPAL ? ' · album art' : '');
       };
     } else if (r.type === 'time') {
       row.innerHTML = `<span class="lbl">${r.label}</span><input type="time" class="time" aria-label="${r.label}">`;

@@ -17,7 +17,9 @@ window.Spotify = (() => {
     renderRow();
   }
   const b64url = buf => btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-  const clientId = () => (Store.get('spClient') || '').trim();
+  /* Still's own Spotify app; a Client ID is public by design in the PKCE flow. Settings can override it */
+  const DEFAULT_ID = 'ed0e259ac6df4d6ca3d1d10879bde999';
+  const clientId = () => (Store.get('spClient') || '').trim() || DEFAULT_ID;
 
   async function connect() {
     if (!/^[0-9a-z]{32}$/i.test(clientId())) return UI.toast('Paste your Spotify Client ID first', 2600);
@@ -196,7 +198,7 @@ window.Spotify = (() => {
   function renderRow() {
     if (!rowEls) return;
     const { el, inp } = rowEls;
-    if (document.activeElement !== inp) inp.value = Store.get('spClient') || '';
+    if (document.activeElement !== inp) inp.value = clientId();
     el.querySelector('code').textContent = redirect();
     el.querySelector('.sp-status').textContent = tok ? 'Connected' : 'Not connected';
     el.classList.toggle('on', !!tok);

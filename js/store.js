@@ -109,9 +109,10 @@ window.SKYPAL = (() => {
 let skyPalCache = null;
 window.refreshSkyPalette = () => { skyPalCache = SKYPAL(window.Sky && Sky.state); return skyPalCache; };
 window.pal = () => {
-  /* while a song plays, its album art can colour everything (set by spotify.js) */
-  if (window.MUSICPAL) return MUSICPAL;
   const k = Store.get('palette');
+  /* Sky is the live palette: it follows the sky, or the album art while a song plays (spotify.js).
+     A palette picked by hand always wins */
+  if (k === 'sky' && window.MUSICPAL) return MUSICPAL;
   if (k === 'sky') return skyPalCache || refreshSkyPalette();
   return PALETTES[k] || PALETTES.aurora;
 };

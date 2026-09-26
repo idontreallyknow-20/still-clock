@@ -17,7 +17,7 @@
     document.querySelector('meta[name=theme-color]').content = p.bg;
     BG.palette(p, instant);
   }
-  window.StillPalette = () => applyPalette();
+  window.StillPalette = () => { applyPalette(); UI.syncAll(); };
   function applyMotion() { body.classList.remove('m-calm', 'm-normal', 'm-wild'); body.classList.add('m-' + Store.get('motion')); }
   function applySize() { root.setProperty('--size', Store.get('size')); }
 
