@@ -244,7 +244,7 @@
     }
     else if (k === 'f') UI.fullscreen();
     else if (k === 'm') UI.toast(Sound.toggleMute() ? 'Muted' : 'Sound on');
-    else if (k >= '1' && k <= '4') { Store.set('face', FACES[+k - 1][0]); UI.toast(FACES[+k - 1][1]); }
+    else if (k >= '1' && k <= '5') { Store.set('face', FACES[+k - 1][0]); UI.toast(FACES[+k - 1][1]); }
     else if (k === 'p') { cycle('palette', Object.keys(PALETTES)); UI.toast(pal().name); }
     else if (k === 'w') { cycle('weather', ['live', 'clear', 'rain', 'snow', 'blizzard', 'storm', 'fog']); UI.toast('Weather · ' + Store.get('weather')); }
     else if (k === 't') { cycle('skyMode', ['real', 'timelapse']); UI.toast(Store.get('skyMode') === 'timelapse' ? 'Timelapse' : 'Real time'); }
@@ -254,7 +254,7 @@
   });
 
   function resize() { safe('background', BG.resize); safe('particles', FX.resize); safe('sky', Sky.resize); safe('3d', () => window.GL3D && GL3D.resize()); safe('face', Faces.relayout); }
-  QUALITY.on(() => { safe('particles', FX.resize); safe('sky', Sky.resize); });
+  QUALITY.on(t => { safe('particles', FX.resize); safe('sky', Sky.resize); body.classList.remove('q1', 'q2', 'q3'); if (t) body.classList.add('q' + t); });
   let rz; addEventListener('resize', () => { clearTimeout(rz); rz = setTimeout(resize, 120); });
 
   /* ---------- boot ---------- */

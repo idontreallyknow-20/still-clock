@@ -105,25 +105,9 @@ window.Sky = (() => {
   const hazeW = sprite(128, [[0, 'rgba(255,225,190,.55)'], [0.5, 'rgba(240,200,170,.2)'], [1, 'rgba(230,190,160,0)']]);
   const softDot = sprite(64, [[0, 'rgba(255,255,255,1)'], [0.4, 'rgba(255,255,255,.5)'], [1, 'rgba(255,255,255,0)']]);
 
-  /* moon surface, drawn once */
-  const moonTex = (() => {
-    const s = 256, c = document.createElement('canvas'); c.width = c.height = s;
-    const g = c.getContext('2d');
-    let seed = 7; const rr = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
-    g.fillStyle = '#d9d6cf'; g.beginPath(); g.arc(s / 2, s / 2, s / 2, 0, TAU); g.fill();
-    g.globalCompositeOperation = 'source-atop';
-    const maria = [[0.35, 0.3, 0.2], [0.55, 0.38, 0.16], [0.42, 0.55, 0.14], [0.62, 0.6, 0.12], [0.3, 0.62, 0.1], [0.5, 0.2, 0.09]];
-    maria.forEach(([x, y, r]) => { const gr = g.createRadialGradient(x * s, y * s, 0, x * s, y * s, r * s); gr.addColorStop(0, 'rgba(95,95,105,.55)'); gr.addColorStop(1, 'rgba(95,95,105,0)'); g.fillStyle = gr; g.fillRect(0, 0, s, s); });
-    for (let i = 0; i < 90; i++) {
-      const x = rr() * s, y = rr() * s, r = 1 + Math.pow(rr(), 3) * 12;
-      g.fillStyle = 'rgba(80,80,90,.28)'; g.beginPath(); g.arc(x, y, r, 0, TAU); g.fill();
-      g.fillStyle = 'rgba(255,255,250,.22)'; g.beginPath(); g.arc(x - r * 0.25, y - r * 0.25, r * 0.7, 0, TAU); g.fill();
-    }
-    const lg = g.createRadialGradient(s / 2, s / 2, s * 0.3, s / 2, s / 2, s / 2);
-    lg.addColorStop(0, 'rgba(0,0,0,0)'); lg.addColorStop(1, 'rgba(40,40,50,.45)');
-    g.fillStyle = lg; g.fillRect(0, 0, s, s);
-    return c;
-  })();
+  /* the moon's face: the near side of the real lunar map (js/moon.js) */
+  const moonTex = MoonMap.disk(320);
+  const moonGlow = sprite(128, [[0, 'rgba(225,232,255,.95)'], [0.12, 'rgba(200,214,255,.42)'], [0.4, 'rgba(160,180,240,.1)'], [1, 'rgba(150,170,230,0)']]);
 
   /* cloud puffs: alpha masks, tinted each second to the current light */
   const moonCv = document.createElement('canvas'), clouds = [];
@@ -306,14 +290,27 @@ window.Sky = (() => {
     /* the glitter path of the moon or sun */
     ctx.globalCompositeOperation = 'lighter';
     if (glint && glint.a > 0.02 && glint.x > -200 && glint.x < W + 200) {
-      const t = now * 0.001;
+      const t = now * 0.001, span = H - ly, colW = 14 + span * 0.3;
+      /* the soft column: stacked bands, each fading in from the shore, so it has no hard edge */
+      for (let b = 0; b < 10; b++) {
+        const y0 = ly + span * b / 10, w = 8 + (colW - 8) * (b + 0.5) / 10;
+        const bg = ctx.createLinearGradient(glint.x - w, 0, glint.x + w, 0);
+        bg.addColorStop(0, css(glint.c, 0)); bg.addColorStop(0.5, css(glint.c, 1)); bg.addColorStop(1, css(glint.c, 0));
+        ctx.globalAlpha = glint.a * 0.07 * (1 - frozen * 0.5) * (1 - b / 12); ctx.fillStyle = bg;
+        ctx.fillRect(glint.x - w, y0, w * 2, span / 10 + 1);
+      }
       ctx.fillStyle = css(glint.c);
-      for (let y = ly + 2; y < H; y += 3) {
-        const d = (y - ly) / (H - ly), w = 4 + d * 70, n = hash(Math.floor(y) * 1.7 + Math.floor(t * 6));
-        if (n < 0.3) continue;
-        ctx.globalAlpha = glint.a * (0.25 + n * 0.6) * (1 - d * 0.55);
-        const off = Math.sin(y * 0.3 + t * 2) * w * 0.3;
-        ctx.fillRect(glint.x - w * n * 0.5 + off, y, w * n, 1.2 + d);
+      const calmWater = 1 - frozen * 0.8;
+      for (let y = ly + 1; y < H; y += 2) {
+        const d = (y - ly) / span, row = y | 0;
+        for (let k = 0; k < 3; k++) {
+          const n = hash(row * 1.7 + k * 31.3 + Math.floor(t * (3 + k * 2) + row * 0.37));
+          if (n < 0.55) continue;
+          const spread = 4 + d * d * 150, off = (hash(row * 3.1 + k * 7.7 + Math.floor(t * 2 + k)) - 0.5) * 2 * spread * (0.35 + d);
+          const w = (2 + d * 30) * (n - 0.45);
+          ctx.globalAlpha = glint.a * (n - 0.5) * 1.7 * (1 - d * 0.45) * calmWater;
+          ctx.fillRect(glint.x + off - w / 2, y, w, 0.7 + d * 1.3);
+        }
       }
     }
     /* raindrops ringing the water: each ring is a pure function of time, so there is nothing to track */
@@ -613,11 +610,13 @@ window.Sky = (() => {
         const a = (1 - cloud * 0.75) * (0.55 + 0.45 * sstep(-2, -8, sunDeg));
         if (!glint || dark > 0.5) glint = { x: mx, c: [0.85, 0.9, 1], a: a * illum * dark };
         ctx.globalCompositeOperation = 'lighter';
-        ctx.globalAlpha = a * (0.25 + illum * 0.75);
-        ctx.drawImage(softDot, mx - r * 5, my - r * 5, r * 10, r * 10);
+        ctx.globalAlpha = a * (0.1 + illum * 0.4);
+        ctx.drawImage(moonGlow, mx - r * 12, my - r * 12, r * 24, r * 24);
+        ctx.globalAlpha = a * (0.15 + illum * 0.5);
+        ctx.drawImage(moonGlow, mx - r * 3.2, my - r * 3.2, r * 6.4, r * 6.4);
         if (cloud > 0.15 && cloud < 0.7 && illum > 0.5 && dark > 0.5) {
           const hr = 22 * D2R * focal;
-          ctx.globalAlpha = 0.06 * (1 - Math.abs(cloud - 0.42) * 3) * illum;
+          ctx.globalAlpha = 0.028 * (1 - Math.abs(cloud - 0.42) * 3) * illum;
           ctx.strokeStyle = '#dfe8ff'; ctx.lineWidth = hr * 0.05;
           ctx.beginPath(); ctx.arc(mx, my, hr, 0, TAU); ctx.stroke();
         }
@@ -644,7 +643,7 @@ window.Sky = (() => {
         g.ellipse(0, 0, Math.abs(e) + 0.01, r + 1, 0, -Math.PI / 2, Math.PI / 2, e < 0);
         g.closePath(); g.fill();
         g.setTransform(1, 0, 0, 1, 0, 0);
-        g.globalCompositeOperation = 'destination-over'; g.globalAlpha = 0.07 * dark;
+        g.globalCompositeOperation = 'destination-over'; g.globalAlpha = 0.09 * dark * (1 - illum * 0.6);
         g.drawImage(moonTex, ms / 2 - r, ms / 2 - r, r * 2, r * 2);
         ctx.globalCompositeOperation = 'source-over';
         ctx.globalAlpha = a;

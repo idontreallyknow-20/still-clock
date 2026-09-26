@@ -11,7 +11,7 @@ window.PALETTES = {
   nebula: { name: 'Nebula', bg: '#05020a', a: '#ff3ea5', b: '#6a3cff', c: '#00d4ff', t1: '#fff4fd', t2: '#e2b8ff', glow: '#b05cff' },
   mono:   { name: 'Mono',   bg: '#030303', a: '#8a8a8a', b: '#3e3e3e', c: '#dcdcdc', t1: '#ffffff', t2: '#b5b5b5', glow: '#ffffff' },
 };
-window.FACES = [['glass', 'Glass'], ['swarm', 'Swarm'], ['flip', 'Flip'], ['orbit', 'Orbit']];
+window.FACES = [['glass', 'Glass'], ['swarm', 'Swarm'], ['flip', 'Flip'], ['orbit', 'Orbit'], ['nova', 'Nova']];
 
 window.Store = (() => {
   const KEY = 'still.v3';

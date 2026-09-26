@@ -310,7 +310,7 @@ function timeLabel(face, w = 1024, h = 360) {
   const c = document.createElement('canvas'); c.width = w; c.height = h;
   const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 4;
   const mat = new THREE.MeshBasicMaterial({ ...ADD, map: tex, toneMapped: false, depthTest: false });
-  mat.color.setScalar(1.25);
+  mat.color.setScalar(1.45);
   const mesh = new THREE.Mesh(new THREE.PlaneGeometry(1, h / w), mat);
   mesh.renderOrder = 10;
   let last = '';
@@ -324,9 +324,11 @@ function timeLabel(face, w = 1024, h = 360) {
     g.font = `200 ${fs}px Outfit, "Segoe UI Variable Display", "Segoe UI", sans-serif`;
     const gr = g.createLinearGradient(0, y - fs / 2, 0, y + fs / 2);
     gr.addColorStop(0, p.t1); gr.addColorStop(1, p.t2);
-    g.shadowColor = p.glow; g.shadowBlur = fs * 0.18;
-    g.fillStyle = gr; g.fillText(main, w / 2, y);
-    g.shadowBlur = 0; g.fillText(main, w / 2, y);
+    /* three passes: a wide bloom, a tight halo, then the crisp glyphs on top */
+    g.fillStyle = gr; g.shadowColor = p.glow;
+    g.globalAlpha = 0.55; g.shadowBlur = fs * 0.34; g.fillText(main, w / 2, y);
+    g.globalAlpha = 0.9; g.shadowBlur = fs * 0.11; g.fillText(main, w / 2, y);
+    g.globalAlpha = 1; g.shadowBlur = 0; g.fillText(main, w / 2, y);
     if (sub) { g.font = `300 ${h * 0.14}px "JetBrains Mono", Consolas, monospace`; g.fillStyle = p.t2; g.globalAlpha = 0.8; g.fillText(sub, w / 2, h * 0.82); g.globalAlpha = 1; }
     tex.needsUpdate = true;
   };
@@ -338,25 +340,13 @@ function timeLabel(face, w = 1024, h = 360) {
    whose spiral arms are a density wave; around it a 24 h dial carries the real sun, the moon
    with its true phase, and the planets, all at their real hour angles over Richmond Hill
    ===================================================================================== */
-function makeMoonTex() {
-  return sprite(512, (g, s) => {
-    const h = s / 2; g.canvas.height = h;
-    let seed = 11; const rr = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
-    g.fillStyle = '#c9c5bc'; g.fillRect(0, 0, s, h);
-    const maria = [[0.3, 0.38, 0.1], [0.36, 0.52, 0.08], [0.25, 0.55, 0.07], [0.42, 0.42, 0.06], [0.2, 0.42, 0.05], [0.33, 0.65, 0.06], [0.45, 0.6, 0.05]];
-    maria.forEach(([x, y, r]) => { const gr = g.createRadialGradient(x * s, y * h, 0, x * s, y * h, r * s); gr.addColorStop(0, 'rgba(70,72,82,.75)'); gr.addColorStop(1, 'rgba(70,72,82,0)'); g.fillStyle = gr; g.fillRect(0, 0, s, h); });
-    for (let i = 0; i < 420; i++) {
-      const x = rr() * s, y = rr() * h, r = 0.6 + Math.pow(rr(), 4) * 9;
-      g.fillStyle = 'rgba(60,60,70,.3)'; g.beginPath(); g.arc(x, y, r, 0, TAU); g.fill();
-      g.fillStyle = 'rgba(255,255,250,.18)'; g.beginPath(); g.arc(x - r * 0.3, y - r * 0.3, r * 0.65, 0, TAU); g.fill();
-    }
-    const gr = g.createRadialGradient(0.18 * s, 0.82 * h, 0, 0.18 * s, 0.82 * h, 12); gr.addColorStop(0, 'rgba(255,255,255,.9)'); gr.addColorStop(1, 'rgba(255,255,255,0)');
-    g.fillStyle = gr; g.fillRect(0, 0, s, h); /* Tycho */
-  });
+function moonTexture() {
+  const t = new THREE.CanvasTexture(MoonMap.equirect); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; return t;
 }
+const qMoonFace = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, -Math.PI / 2, 0)), qTmp = new THREE.Quaternion();
 
-function Orbit() {
-  const F = base({ name: 'orbit' });
+function Orbit(opts = {}) {
+  const F = base({ name: 'orbit' }), withLabel = opts.label !== false;
   /* disc: tilted plane, unscaled (the galaxy shaders scale by uR); unit: everything measured in hour-ring radii */
   const g = F.group, disc = new THREE.Group(), unit = new THREE.Group(); g.add(disc); disc.add(unit);
   let Rw = 7, born = T, lastMin = -1;
@@ -534,7 +524,7 @@ void main() {
   const dial = new THREE.Mesh(new THREE.RingGeometry(DIAL - 0.09, DIAL + 0.09, 360, 1), dialMat);
   unit.add(dial);
   const sunBall = new THREE.Mesh(new THREE.SphereGeometry(0.045, 24, 12), glowMat(F, new THREE.Color(3.2, 2.3, 1.2)));
-  const moonTex = makeMoonTex();
+  const moonTex = moonTexture();
   const moonMat = new THREE.ShaderMaterial({
     uniforms: { uMap: { value: moonTex }, uL: { value: new THREE.Vector3(0, 0, 1) }, uFade: F.fade },
     vertexShader: `varying vec3 vN; varying vec2 vUv; void main() { vUv = uv; vN = normalize(normalMatrix * normal); gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.); }`,
@@ -542,11 +532,10 @@ void main() {
 void main() { float l = dot(normalize(vN), normalize(uL));
   float lit = smoothstep(-.04, .1, l) * (.35 + .65 * max(l, 0.));
   vec3 t = texture2D(uMap, vUv).rgb;
-  gl_FragColor = vec4(t * (lit * 1.15 + .03) * uFade, 1.); }`,
+  gl_FragColor = vec4(t * (lit * .85 + .03) * uFade, 1.); }`,
     ...ADD,
   });
-  const moonBall = new THREE.Mesh(new THREE.SphereGeometry(0.075, 48, 24), moonMat);
-  moonBall.rotation.set(0, -Math.PI / 2, 0);
+  const moonBall = new THREE.Mesh(new THREE.SphereGeometry(0.1, 64, 32), moonMat);
   unit.add(sunBall, moonBall);
   const PLN = 5, plPos = new Float32Array(PLN * 3), plCol = new Float32Array(PLN * 3);
   const plGeo = new THREE.BufferGeometry();
@@ -566,21 +555,29 @@ void main() { float l = dot(normalize(vN), normalize(uL));
     unit.add(m); return m;
   });
 
-  /* ---- the photon ring and the time, upright in the middle ---- */
+  /* ---- the gyroscope around the time: a photon ring, three arcs turning one way, a tick bezel the other ---- */
   const halo = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.ShaderMaterial({
     ...ADD, uniforms: { uTime: GU.uTime, uFade: F.fade, uC: { value: new THREE.Color() }, uC2: { value: new THREE.Color() }, uGlow: { value: 0 } },
     vertexShader: `varying vec2 vUv; void main() { vUv = uv * 2. - 1.; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.); }`,
     fragmentShader: `uniform float uTime, uFade, uGlow; uniform vec3 uC, uC2; varying vec2 vUv;
+const float TAU = 6.2831853;
 void main() { float r = length(vUv), a = atan(vUv.y, vUv.x);
-  float fl = .75 + .25 * sin(a * 3. + uTime * .9) * sin(a * 5. - uTime * 1.3);
-  float ring = exp(-pow((r - .82) * 22., 2.)) * fl;
-  float haze = exp(-pow((r - .82) * 5., 2.)) * .18;
-  vec3 c = mix(uC, uC2, .5 + .5 * sin(a + uTime * .2)) * (ring * 1.4 + haze) * (1. + uGlow);
-  gl_FragColor = vec4(c * uFade * smoothstep(1., .95, r), 1.); }`,
+  vec3 base = mix(uC, uC2, .5 + .5 * sin(a + uTime * .2));
+  float fl = .8 + .2 * sin(a * 3. + uTime * .9) * sin(a * 5. - uTime * 1.3);
+  float ring = exp(-pow((r - .8) * 46., 2.)) * fl * 1.25 + exp(-pow((r - .8) * 8., 2.)) * .16;
+  float a1 = mod(a - uTime * .22, TAU / 3.);
+  float arcs = smoothstep(0., .03, a1) * smoothstep(1.45, 1.4, a1) * exp(-pow((r - .9) * 110., 2.));
+  float a2 = mod(-a - uTime * .31, TAU / 2.);
+  float arcs2 = smoothstep(0., .03, a2) * smoothstep(.55, .5, a2) * exp(-pow((r - .945) * 160., 2.));
+  float tk = fract((a + uTime * .05) / TAU * 96.);
+  float ticks = smoothstep(.45, .3, tk) * exp(-pow((r - .7) * 140., 2.)) * (.35 + .65 * step(.9, fract((a + uTime * .05) / TAU * 12.)));
+  float core = exp(-r * r * 3.) * .045;
+  vec3 c = base * (ring + arcs * .95 + arcs2 * .7 + ticks * .6) * (1. + uGlow) + base * core;
+  gl_FragColor = vec4(c * uFade * smoothstep(1., .97, r), 1.); }`,
   }));
   halo.renderOrder = 5;
   const label = timeLabel(F);
-  g.add(halo, label);
+  halo.visible = label.visible = withLabel; g.add(halo, label);
 
   const tmpV = new THREE.Vector3(), camRight = new THREE.Vector3(1, 0, 0);
   let geo = { cx: W / 2, cy: H * 0.45, bottom: H * 0.8 };
@@ -589,15 +586,15 @@ void main() { float r = length(vUv), a = atan(vUv.y, vUv.x);
     Rw = Math.min(vw * 0.23, VH * 0.29) * Store.get('size');
     GU.uR.value = Rw; unit.scale.setScalar(Rw);
     g.position.set(0, VH * 0.05, 0);
-    halo.scale.setScalar(Rw * 0.98);
-    label.scale.setScalar(Rw * 0.95);
+    halo.scale.setScalar(Rw * 1.36);
+    label.scale.setScalar(Rw * 1.32);
   }
   layout();
 
   F.mount = root => { F.root = root; root.classList.add('gl-face'); };
   F.set = (t, first) => {
     const sub = Store.get('seconds') ? t.ss : '';
-    label.draw(t.hm, sub);
+    if (withLabel) label.draw(t.hm, sub);
     if (!first && lastMin !== -1 && t.M !== lastMin && t.M === 0) F.breath = 1;
     lastMin = t.M;
   };
@@ -685,6 +682,8 @@ void main() { float r = length(vUv), a = atan(vUv.y, vUv.x);
       dialMat.uniforms.uNight.value.copy(P.b);
       sunBall.position.set(Math.sin(sunHA) * DIAL, Math.cos(sunHA) * DIAL, 0);
       moonBall.position.set(Math.sin(moonHA) * (DIAL + 0.02), Math.cos(moonHA) * (DIAL + 0.02), 0.03);
+      unit.updateMatrixWorld(); unit.getWorldQuaternion(qTmp);
+      moonBall.quaternion.copy(qTmp.invert()).multiply(qMoonFace);
       /* light the moon so the viewer sees its true phase, bright limb on the side the sun is */
       const mw = moonBall.getWorldPosition(tmpV);
       const V = new THREE.Vector3().subVectors(faceCam.position, mw).normalize();
@@ -702,7 +701,7 @@ void main() { float r = length(vUv), a = atan(vUv.y, vUv.x);
 
     const hm = halo.material.uniforms; hm.uC.value.copy(P.glow); hm.uC2.value.copy(P.c); hm.uGlow.value = glow * 1.5;
     label.material.opacity = F.fade.value;
-    label.draw(t.hm, Store.get('seconds') ? t.ss : '');
+    if (withLabel) label.draw(t.hm, Store.get('seconds') ? t.ss : '');
 
     g.updateMatrixWorld();
     const c0 = toScreen(g.getWorldPosition(new THREE.Vector3()));
@@ -736,10 +735,10 @@ function glyph(ch) {
   return gl;
 }
 
-function Swarm() {
+function Swarm(opts = {}) {
   const F = base({ name: 'swarm' });
   const g = F.group;
-  const N = Math.round(46000 * pScale()), NF = Math.round(20000 * pScale());
+  const N = Math.round((opts.nova ? 32000 : 46000) * pScale()), NF = opts.flock === false ? 0 : Math.round(20000 * pScale());
   const from = new Float32Array(N * 3), to = new Float32Array(N * 3), t0 = new Float32Array(N), sd = new Float32Array(N * 4);
   for (let i = 0; i < N; i++) { t0[i] = -99; for (let j = 0; j < 4; j++) sd[i * 4 + j] = R(); }
   for (let i = 0; i < N * 3; i++) from[i] = to[i] = (R() - 0.5) * 60;
@@ -750,7 +749,7 @@ function Swarm() {
   geo.setAttribute('aSeed', new THREE.BufferAttribute(sd, 4));
   const SU = {
     uTime: { value: 0 }, uDur: { value: 1.6 }, uPx: { value: 800 }, uFade: F.fade, uH: { value: 8 }, uW: { value: 30 }, uSweep: { value: -1 },
-    uMouse: { value: new THREE.Vector3(1e4, 1e4, 0) }, uMouseOn: { value: 0 }, uCenter: { value: new THREE.Vector3() }, uAttract: { value: 0 },
+    uGain: { value: opts.nova ? 1.5 : 1 }, uMouse: { value: new THREE.Vector3(1e4, 1e4, 0) }, uMouseOn: { value: 0 }, uCenter: { value: new THREE.Vector3() }, uAttract: { value: 0 },
     uC0: { value: new THREE.Color() }, uC1: { value: new THREE.Color() }, uC2: { value: new THREE.Color() }, uC3: { value: new THREE.Color() }, uC4: { value: new THREE.Color() },
   };
   const pts = new THREE.Points(geo, new THREE.ShaderMaterial({
@@ -782,8 +781,8 @@ void main() {
   vCol = c * (.55 + fly * 1.4 + sweep * 1.3 + glint + push * .8);
   gl_PointSize = clamp((.7 + aSeed.w * .9) * uH * .0075 * uPx / -mv.z * (1. + fly * .5), 1., 26.);
 }`,
-    fragmentShader: `uniform float uFade; varying vec3 vCol;
-void main() { vec2 d = gl_PointCoord - .5; float a = exp(-dot(d, d) * 16.); gl_FragColor = vec4(vCol * a * uFade * .5, 1.); }`,
+    fragmentShader: `uniform float uFade, uGain; varying vec3 vCol;
+void main() { vec2 d = gl_PointCoord - .5; float a = exp(-dot(d, d) * 16.); gl_FragColor = vec4(vCol * a * uFade * .5 * uGain, 1.); }`,
   }));
   pts.frustumCulled = false; g.add(pts);
 
@@ -821,13 +820,15 @@ void main() {
     fragmentShader: `uniform float uFade; varying vec3 vCol;
 void main() { vec2 d = gl_PointCoord - .5; float a = exp(-dot(d, d) * 14.); gl_FragColor = vec4(vCol * a * uFade, 1.); }`,
   }));
-  flock.frustumCulled = false; g.add(flock);
+  flock.frustumCulled = false; if (NF) g.add(flock);
 
   let str = '', slots = [], textH = 8, box = { cx: 0, cy: 0, bottom: 0 }, sweepT0 = -99;
   const center = new THREE.Vector3();
   function layout(s) {
     const vw = VH * W / H, gl = [...s].map(glyph), total = gl.reduce((a, b) => a + b.adv, 0);
-    textH = Math.min(VH * 0.4, vw * 0.8 / Math.max(total, 1)) * Store.get('size') * (Store.get('seconds') ? 0.95 : 1);
+    textH = opts.nova
+      ? Math.min(vw * 0.23, VH * 0.29) * 0.74 * Store.get('size') * (Store.get('seconds') ? 0.8 : 1)
+      : Math.min(VH * 0.4, vw * 0.8 / Math.max(total, 1)) * Store.get('size') * (Store.get('seconds') ? 0.95 : 1);
     SU.uH.value = textH; SU.uW.value = total * textH;
     g.position.set(0, VH * 0.05, 0);
     let x = -total / 2;
@@ -891,12 +892,26 @@ void main() { vec2 d = gl_PointCoord - .5; float a = exp(-dot(d, d) * 14.); gl_F
     center.set(mx, my, textH * 0.3); SU.uCenter.value.lerp(center, Math.min(1, dt / 1200));
     SU.uAttract.value += ((active ? 0.65 : 0) - SU.uAttract.value) * Math.min(1, dt / 2000);
     const tt = T * (0.3 + m * 0.7);
-    g.rotation.y = mouse.nx * 0.35 + Math.sin(tt * 0.07) * 0.16;
-    g.rotation.x = mouse.ny * 0.25 + Math.sin(tt * 0.05) * 0.06;
+    g.rotation.y = (mouse.nx * 0.35 + Math.sin(tt * 0.07) * 0.16) * (opts.nova ? 0.6 : 1);
+    g.rotation.x = (mouse.ny * 0.25 + Math.sin(tt * 0.05) * 0.06) * (opts.nova ? 0.6 : 1);
   };
   F.bottom = () => box.bottom || H * 0.75;
   F.anchor = () => { const c = toScreen(g.getWorldPosition(new THREE.Vector3())); return { x: c.x, y: c.y }; };
   return F;
+}
+
+/* =====================================================================================
+   NOVA — Orbit and Swarm as one: the galaxy, its rings and the real sky, with the time held in
+   the middle by the swarm's particles, which swoop out across the disc whenever a digit changes
+   ===================================================================================== */
+function Nova() {
+  const o = Orbit({ label: false }), s = Swarm({ flock: false, nova: true });
+  const both = f => (...a) => { o[f](...a); s[f](...a); };
+  return {
+    name: 'nova',
+    mount: both('mount'), set: both('set'), frame: both('frame'), leave: both('leave'), unmount: both('unmount'), relayout: both('relayout'),
+    beat() {}, bottom: () => o.bottom(), anchor: () => o.anchor(),
+  };
 }
 
 /* =====================================================================================
@@ -918,4 +933,4 @@ function frame(dt, now) {
 }
 
 applyQuality();
-window.GL3D = { get weather() { return !lost; }, frame, resize, pulse, Orbit, Swarm, get time() { return T; }, get debug() { return { rain: rainGeo.instanceCount, snow: snowGeo.instanceCount }; } };
+window.GL3D = { get weather() { return !lost; }, frame, resize, pulse, Orbit, Swarm, Nova, get time() { return T; }, get debug() { return { rain: rainGeo.instanceCount, snow: snowGeo.instanceCount }; } };

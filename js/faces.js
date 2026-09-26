@@ -6,7 +6,8 @@ const TAU = Math.PI * 2, rnd = Math.random;
 
 /* ============ GLASS — liquid digits that roll, blur and shatter into sparks ============ */
 function Glass() {
-  let root, wrap, row, time, sec;
+  let root, wrap, row, time, sec, pane, tx = 0, ty = 0, lastT = '';
+  const still = matchMedia('(prefers-reduced-motion: reduce)');
   function put(slot, c, delay, sparks) {
     slot.dataset.c = c;
     slot.querySelectorAll('.ch:not(.out)').forEach(o => {
@@ -41,13 +42,26 @@ function Glass() {
   }
   /* a single band of light across the glass whenever the time changes */
   function sweep(delay) {
-    setTimeout(() => { time.classList.remove('sweep'); void time.offsetWidth; time.classList.add('sweep'); }, delay);
+    setTimeout(() => {
+      [time, pane].forEach(el => { el.classList.remove('sweep'); void el.offsetWidth; el.classList.add('sweep'); });
+    }, delay);
   }
   return {
     mount(r) {
       root = r;
-      r.innerHTML = '<div class="glass"><div class="g-row"><div class="g-time"></div><div class="g-sec"></div></div></div>';
-      wrap = r.firstChild; row = r.querySelector('.g-row'); time = r.querySelector('.g-time'); sec = r.querySelector('.g-sec');
+      /* a pane of frosted glass floats behind the digits: it blurs the real sky through it, catches a
+         highlight where the pointer is, and the whole slab tilts toward you in 3D */
+      r.innerHTML = '<div class="glass"><div class="g-pane"><i class="g-caustic"></i><i class="g-sheen"></i><i class="g-edge"></i></div><div class="g-row"><div class="g-time"></div><div class="g-sec"></div></div></div>';
+      wrap = r.firstChild; pane = r.querySelector('.g-pane'); row = r.querySelector('.g-row'); time = r.querySelector('.g-time'); sec = r.querySelector('.g-sec');
+    },
+    frame() {
+      const m = FX.mouse, k = Store.get('motion') === 'calm' ? 0.5 : 1;
+      const nx = still.matches ? 0 : (m.nx || 0) * k, ny = still.matches ? 0 : (m.ny || 0) * k;
+      tx += (nx - tx) * 0.06; ty += (ny - ty) * 0.06;
+      const t = `rotateX(${(-ty * 10).toFixed(2)}deg) rotateY(${(tx * 14).toFixed(2)}deg)`;
+      if (t === lastT) return;
+      lastT = t; wrap.style.transform = t;
+      pane.style.setProperty('--mx', (50 + tx * 90).toFixed(1) + '%'); pane.style.setProperty('--my', (35 + ty * 90).toFixed(1) + '%');
     },
     set(t, first) {
       const on = Store.get('seconds');
@@ -62,7 +76,7 @@ function Glass() {
       if (!c) return;
       c.classList.remove('beat'); void c.offsetWidth; c.classList.add('beat');
     },
-    bottom() { const r = row.getBoundingClientRect(); return r.bottom + r.height * 0.06; },
+    bottom() { const r = pane.getBoundingClientRect(); return r.bottom + 16; },
     anchor() { const r = time.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; },
   };
 }
@@ -428,6 +442,7 @@ window.Faces = (() => {
     glass: Glass, flip: Flip,
     swarm: () => window.GL3D ? GL3D.Swarm() : Swarm(),
     orbit: () => window.GL3D ? GL3D.Orbit() : Orbit(),
+    nova: () => window.GL3D ? GL3D.Nova() : Orbit(),
   };
   let cur = null, alive = [];
   function show(name, t, first) {

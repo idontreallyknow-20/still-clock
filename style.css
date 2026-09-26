@@ -258,6 +258,40 @@ body.wco #titlebar { display: block; position: fixed; z-index: 30; top: env(titl
   width: env(titlebar-area-width, 100%); height: env(titlebar-area-height, 32px); app-region: drag; -webkit-app-region: drag; }
 body.wco #hint { top: calc(env(titlebar-area-height, 32px) + 18px); }
 
+/* ============ v4: glass pane ============ */
+.face-glass { perspective: 1600px; }
+.glass { position: relative; transform-style: preserve-3d; will-change: transform; }
+.g-row { position: relative; transform: translateZ(.08em); }
+.g-pane { position: absolute; inset: -.07em -.2em -.1em; border-radius: .13em; transform: translateZ(-.06em); overflow: hidden; pointer-events: none;
+  background: linear-gradient(135deg, rgba(255, 255, 255, .13), rgba(255, 255, 255, .025) 42%, rgba(255, 255, 255, .07));
+  -webkit-backdrop-filter: blur(.045em) saturate(1.9) brightness(1.1); backdrop-filter: blur(.045em) saturate(1.9) brightness(1.1);
+  box-shadow: inset 0 .004em 0 rgba(255, 255, 255, .45), inset 0 -.003em 0 rgba(255, 255, 255, .1), 0 .08em .35em rgba(0, 0, 0, .35),
+    0 0 .45em color-mix(in srgb, var(--glow) 16%, transparent); }
+/* slow caustics drifting through the glass (a transform animation, so the GPU does it) */
+.g-caustic { position: absolute; inset: -35%; mix-blend-mode: screen; opacity: .8;
+  background: radial-gradient(38% 28% at 30% 40%, color-mix(in srgb, var(--a1) 22%, transparent), transparent 70%),
+    radial-gradient(32% 24% at 70% 62%, color-mix(in srgb, var(--a3) 18%, transparent), transparent 70%),
+    radial-gradient(26% 20% at 52% 22%, color-mix(in srgb, var(--a2) 16%, transparent), transparent 70%);
+  animation: caustic 22s ease-in-out infinite alternate; }
+@keyframes caustic { to { transform: translate(10%, -7%) rotate(9deg) scale(1.08); } }
+/* the highlight follows the pointer */
+.g-sheen { position: absolute; inset: 0; mix-blend-mode: screen;
+  background: radial-gradient(circle at var(--mx, 35%) var(--my, 25%), rgba(255, 255, 255, .2), transparent 42%); }
+/* a prismatic rim: a turning conic gradient, masked down to the border */
+.g-edge { position: absolute; inset: 0; border-radius: inherit; padding: .004em; opacity: .7;
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude; }
+.g-edge::before { content: ''; position: absolute; left: 50%; top: 50%; width: 300%; aspect-ratio: 1; translate: -50% -50%;
+  background: conic-gradient(from 0deg, var(--a1), #fff, var(--a2), var(--a3), #fff, var(--a1)); animation: edge-spin 16s linear infinite; }
+@keyframes edge-spin { to { rotate: 360deg; } }
+/* every new minute a band of light crosses the pane */
+.g-pane::before { content: ''; position: absolute; top: -20%; bottom: -20%; left: -45%; width: 32%; z-index: 1; opacity: 0;
+  background: linear-gradient(100deg, transparent, rgba(255, 255, 255, .3), transparent); transform: skewX(-18deg); }
+.g-pane.sweep::before { animation: pane-sweep 1.6s cubic-bezier(0.77, 0, 0.175, 1) .2s both; }
+@keyframes pane-sweep { 0% { opacity: 1; translate: 0 0; } 100% { opacity: 1; translate: 520% 0; } }
+@media (prefers-reduced-motion: reduce) { .g-caustic, .g-edge::before { animation: none; } .g-pane.sweep::before { animation: none; } }
+body.lite .g-pane, body.q3 .g-pane { -webkit-backdrop-filter: none; backdrop-filter: none; background: rgba(255, 255, 255, .06); }
+body.lite .g-caustic, body.q3 .g-caustic { display: none; }
+
 /* ============ v4: the 3D layer, brightness, alarm, live palette ============ */
 /* palette colours are registered so they glide instead of jumping when the Sky palette shifts */
 @property --a1 { syntax: '<color>'; inherits: true; initial-value: #1de9b6; }
@@ -272,6 +306,15 @@ body.wco #hint { top: calc(env(titlebar-area-height, 32px) + 18px); }
 #gl.on { opacity: 1; }
 .face-root.gl-face { filter: none !important; }
 
+#quick { position: fixed; right: 80px; bottom: 26px; z-index: 20; height: 38px; display: flex; align-items: center; gap: 10px; padding: 0 14px 0 12px;
+  border-radius: 99px; color: rgba(255, 255, 255, .7); background: rgba(255, 255, 255, .06); border: 1px solid rgba(255, 255, 255, .08);
+  -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); transition: opacity .3s ease, transform .3s cubic-bezier(0.23, 1, 0.32, 1); }
+#quick input { width: 120px; }
+#quick span { font: 400 10px var(--mono); letter-spacing: .1em; min-width: 3.4em; text-align: right; color: rgba(255, 255, 255, .55); }
+body.idle #quick { opacity: 0; transform: translateY(6px); pointer-events: none; }
+body.panel-open #quick { opacity: 0; pointer-events: none; }
+body.lite #quick { -webkit-backdrop-filter: none; backdrop-filter: none; background: rgba(13, 14, 21, .85); }
+@media (max-width: 600px) { #quick { right: 70px; bottom: 18px; } #quick input { width: 84px; } }
 /* brightness: one black layer under the controls, so the settings stay readable while dimmed */
 #dim { position: fixed; inset: 0; z-index: 19; background: #000; opacity: 0; pointer-events: none; transition: opacity 1.2s ease; }
 

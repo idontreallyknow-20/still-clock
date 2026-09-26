@@ -155,6 +155,13 @@ window.UI = (() => {
     clearTimeout(tt); tt = setTimeout(() => toastEl.classList.remove('show'), ms);
   }
 
+  /* the brightness control that lives beside the gear, always one move away */
+  const qb = document.getElementById('qb'), qbv = document.getElementById('qbv');
+  qb.addEventListener('input', () => Store.set('brightness', +qb.value));
+  document.getElementById('quick').addEventListener('pointerdown', e => e.stopPropagation());
+  qb.addEventListener('keydown', e => e.stopPropagation());
+  sync.brightness = v => { qb.value = v; qb.style.setProperty('--p', ((v - 0.1) / 0.9 * 100) + '%'); qbv.textContent = Math.round(v * 100) + '%'; };
+
   syncAll();
   document.fonts && document.fonts.ready.then(syncAll);
   return { toggle, get open() { return open; }, fullscreen, enterFullscreen, toast, syncAll };
