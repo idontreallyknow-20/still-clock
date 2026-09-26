@@ -11,13 +11,16 @@ window.FACES = [['glass', 'Glass'], ['swarm', 'Swarm'], ['flip', 'Flip'], ['orbi
 
 window.Store = (() => {
   const KEY = 'still.v3';
+  /* bump when the defaults change: saved settings from an older set are replaced once, so everyone sees the new look */
+  const VERSION = 4;
   const hc = (() => { try { return new Intl.DateTimeFormat([], { hour: 'numeric' }).resolvedOptions().hourCycle; } catch (e) { return 'h12'; } })();
   const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
   const DEFAULTS = {
     face: 'glass', palette: 'aurora',
     seconds: false, h24: hc === 'h23' || hc === 'h24', date: true, size: 1,
-    motion: reduce ? 'calm' : 'normal',
-    sound: true, chime: true, ambient: false, volume: 0.6,
+    /* out of the box it goes all in: wild motion and every effect on (reduced-motion users still get calm) */
+    motion: reduce ? 'calm' : 'wild',
+    sound: true, chime: true, ambient: true, volume: 0.6,
     skyMode: 'real', weather: 'live', lines: true,
     lite: false, lockfs: false,
   };
@@ -33,13 +36,13 @@ window.Store = (() => {
   const S = { ...DEFAULTS };
   try {
     const o = JSON.parse(localStorage.getItem(KEY) || '{}');
-    for (const k in DEFAULTS)
+    if (o._v === VERSION) for (const k in DEFAULTS)
       if (typeof o[k] === typeof DEFAULTS[k] && (!VALID[k] || VALID[k](o[k]))) S[k] = o[k];
   } catch (e) {}
 
   const subs = [];
   let timer;
-  const write = () => { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {} };
+  const write = () => { try { localStorage.setItem(KEY, JSON.stringify({ ...S, _v: VERSION })); } catch (e) {} };
   addEventListener('pagehide', write);
 
   return {

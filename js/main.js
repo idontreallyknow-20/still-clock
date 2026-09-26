@@ -85,7 +85,16 @@
   }
 
   /* ---------- the loop ---------- */
-  const raf = /[?&]timer/.test(location.search) ? f => setTimeout(() => f(performance.now()), 16) : f => requestAnimationFrame(f);
+  /* requestAnimationFrame never fires in windows that report themselves hidden (embedded browser
+     panes, some app windows) even while you are looking at them, which froze the clock with no sky.
+     So a timer backs it up: a slow one while rAF is alive, a 60 fps one while it is not. Whichever
+     fires first runs the frame. */
+  let tick = 0, rafSeen = -1e9;
+  const raf = f => {
+    const id = ++tick, go = t => { if (id === tick) { tick++; f(t); } };
+    requestAnimationFrame(t => { rafSeen = performance.now(); go(t); });
+    setTimeout(() => go(performance.now()), performance.now() - rafSeen < 250 ? 120 : 16);
+  };
   let prev = performance.now(), perfT = 0, perfN = 0, suggested = false;
   try { suggested = !!sessionStorage.getItem('still.liteHint'); } catch (e) {}
   const bar = $('progress').firstElementChild;

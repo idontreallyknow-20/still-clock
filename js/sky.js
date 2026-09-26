@@ -511,7 +511,7 @@ window.Sky = (() => {
       if (P[2] > 0) { glowP = [(P[0] - W / 2) / H, (H / 2 - P[1]) / H]; glowC = [0.45, 0.55, 0.8]; glowA = illum * 0.35 * (1 - cloud * 0.5); }
     }
     BGsky = { zen, hor };
-    BG.sky({ zen, hor, sunP: glowP, sunC: glowC, sunA: glowA, horY: 1 - hy / H, aur: (0.1 + 0.9 * dark) * (1 - cloud * 0.75) });
+    BG.sky({ zen, hor, sunP: glowP, sunC: glowC, sunA: glowA, horY: 1 - hy / H, aur: (0.1 + 0.9 * dark) * (1 - cloud * (Store.get('motion') === 'wild' ? 0.35 : 0.75)) });
 
     ctx.clearRect(0, 0, W, H);
     const vis = dark * (1 - cloud * 0.92);
@@ -651,7 +651,8 @@ window.Sky = (() => {
     }
     if (cloud > 0.6) {
       const g = ctx.createLinearGradient(0, 0, 0, hy);
-      g.addColorStop(0, css(cloudBot, (cloud - 0.6) * 1.6)); g.addColorStop(1, css(mixA(cloudBot, cloudTop, 0.5), (cloud - 0.6) * 1.2));
+      const veil = Store.get('motion') === 'wild' ? 0.5 : 1; /* wild lets the aurora glow through an overcast sky */
+      g.addColorStop(0, css(cloudBot, (cloud - 0.6) * 1.6 * veil)); g.addColorStop(1, css(mixA(cloudBot, cloudTop, 0.5), (cloud - 0.6) * 1.2 * veil));
       ctx.globalAlpha = 1; ctx.fillStyle = g; ctx.fillRect(0, 0, W, hy);
     }
 

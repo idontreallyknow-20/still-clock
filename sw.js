@@ -1,6 +1,6 @@
 // Still service worker: network-first so updates show up right away,
 // with a cached copy so the installed app still opens offline.
-const CACHE = 'still-v2';
+const CACHE = 'still-v3';
 const CORE = ['./', 'index.html', 'style.css', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/icon-512.png',
   'js/store.js', 'js/audio.js', 'js/bg.js', 'js/fx.js', 'js/sky.js', 'js/faces.js', 'js/ui.js', 'js/main.js', 'js/app.js'];
 

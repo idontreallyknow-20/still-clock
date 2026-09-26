@@ -106,7 +106,7 @@ void main(){
     gl.uniform1f(U.uTime, time + 40);
     gl.uniform1f(U.uPulse, pulse);
     gl.uniform1f(U.uEnergy, energy);
-    gl.uniform1f(U.uSunA, SK.sunA); gl.uniform1f(U.uHorY, SK.horY); gl.uniform1f(U.uAur, SK.aur);
+    gl.uniform1f(U.uSunA, SK.sunA); gl.uniform1f(U.uHorY, SK.horY); gl.uniform1f(U.uAur, SK.aur * (Store.get('motion') === 'wild' ? 1.4 : 1));
     gl.uniform3fv(U.uZen, SK.zen); gl.uniform3fv(U.uHor, SK.hor); gl.uniform3fv(U.uSunC, SK.sunC);
     gl.uniform3fv(U.uA, V.a); gl.uniform3fv(U.uB, V.b); gl.uniform3fv(U.uC, V.c);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
