@@ -29,7 +29,7 @@ window.Store = (() => {
     lite: false, lockfs: false,
     brightness: 1, autoDim: false,
     alarmOn: false, alarmTime: '07:00',
-    spClient: '', showMusic: true, musicColors: true, musicReact: false, reactGain: 1,
+    spClient: '', showMusic: true, musicClock: true, musicColors: true, musicDuck: true, musicReact: false, reactGain: 1, alarmSpotify: false,
     glow: 0.85, starsAlways: true, planes: true,
   };
   const VALID = {

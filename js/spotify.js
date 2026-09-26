@@ -7,7 +7,7 @@ window.Spotify = (() => {
   /* Spotify only accepts http redirects on 127.0.0.1, so the address is always the served index.html */
   const redirect = () => location.origin + location.pathname.replace(/[^/]*$/, '') + 'index.html';
   const $ = id => document.getElementById(id);
-  let tok = null, now = null, lastTrack = '', pollT = 0, rowEls = null, retryIn = 0, retryAt = 0;
+  let tok = null, now = null, lastTrack = '', pollT = 0, rowEls = null, retryIn = 0, retryAt = 0, ctlAt = -1e9;
   try { tok = JSON.parse(localStorage.getItem(KEY)); } catch (e) {}
 
   function save(t) {
@@ -55,7 +55,8 @@ window.Spotify = (() => {
     catch (e) { UI.toast('Spotify: ' + e.message, 4000); }
   }
 
-  async function api(path, method = 'GET') {
+  /* quiet: no toasts when a call fails (the alarm tries Spotify first and has its own bells to fall back on) */
+  async function api(path, method = 'GET', quiet = false) {
     if (!tok) return null;
     if (Date.now() > tok.exp) {
       if (Date.now() < retryAt) return null;
@@ -70,6 +71,7 @@ window.Spotify = (() => {
     const r = await fetch('https://api.spotify.com/v1' + path, { method, headers: { Authorization: 'Bearer ' + tok.access } });
     if (r.status === 401) { tok.exp = 0; return null; }
     if (method !== 'GET') {
+      if (quiet) return r.ok;
       if (r.status === 403) UI.toast('Controlling playback needs Spotify Premium', 2800);
       else if (r.status === 404) UI.toast('Start Spotify on a device first', 2600);
       return r.ok;
@@ -84,13 +86,17 @@ window.Spotify = (() => {
     clearTimeout(pollT);
     const id = ++pollId;
     if (tok && !document.hidden) {
+      const sent = performance.now();
       try {
         const j = await api('/me/player?additional_types=episode');
-        if (j && !j.idle && j.item) {
+        /* a reading asked for before the last press can land after it: it would undo the press on screen for a poll */
+        if (sent < ctlAt) { /* stale */ }
+        else if (j && !j.idle && j.item) {
           const it = j.item, art = (it.album && it.album.images || it.images || [])[0];
           now = {
             id: it.id, title: it.name, artist: (it.artists || []).map(a => a.name).join(', ') || (it.show && it.show.name) || '',
             art: art && art.url, playing: j.is_playing, progress: j.progress_ms, dur: it.duration_ms, at: performance.now(),
+            vol: j.device && typeof j.device.volume_percent === 'number' ? j.device.volume_percent : null,
           };
         } else if (j) now = null;
       } catch (e) {}
@@ -104,12 +110,42 @@ window.Spotify = (() => {
 
   async function control(what) {
     if (!now && what !== 'toggle') return;
+    ctlAt = performance.now();
     const ok = what === 'next' ? await api('/me/player/next', 'POST')
       : what === 'prev' ? await api('/me/player/previous', 'POST')
       : await api(now && now.playing ? '/me/player/pause' : '/me/player/play', 'PUT');
     if (ok && now && what === 'toggle') { now.progress += performance.now() - now.at; now.at = performance.now(); now.playing = !now.playing; renderCard(); }
     Sound.ui('click');
     setTimeout(poll, 450);
+  }
+
+  /* the clock is the player (js/music.js): seek, volume, and a plain play or pause for the alarm */
+  function pos() { return now ? Math.min(now.dur, now.progress + (now.playing ? performance.now() - now.at : 0)) : 0; }
+  function state() {
+    if (!tok || !now) return null;
+    const p = pos();
+    return { id: now.id, title: now.title, artist: now.artist, art: now.art, playing: now.playing, dur: now.dur, vol: now.vol, pos: p, p: now.dur ? p / now.dur : 0 };
+  }
+  async function seek(frac) {
+    if (!now || !now.dur) return;
+    const ms = Math.round(Math.max(0, Math.min(1, frac)) * now.dur);
+    ctlAt = performance.now();
+    if (await api('/me/player/seek?position_ms=' + ms, 'PUT')) { now.progress = ms; now.at = performance.now(); }
+    setTimeout(poll, 600);
+  }
+  async function volume(v) {
+    if (!now) return;
+    v = Math.round(Math.max(0, Math.min(100, v)));
+    /* set at once, so the next scroll step builds on it even before Spotify answers; the next poll corrects it */
+    now.vol = v; ctlAt = performance.now();
+    await api('/me/player/volume?volume_percent=' + v, 'PUT');
+  }
+  async function play(on, quiet) {
+    ctlAt = performance.now();
+    const ok = await api(on ? '/me/player/play' : '/me/player/pause', 'PUT', quiet);
+    if (ok && now) { now.progress = pos(); now.at = performance.now(); now.playing = on; renderCard(); }
+    setTimeout(poll, 600);
+    return ok;
   }
 
   /* ---------- colours from the album art ---------- */
@@ -153,11 +189,12 @@ window.Spotify = (() => {
   /* ---------- the now-playing card ---------- */
   function fmt(ms) { const s = Math.max(0, Math.floor(ms / 1000)); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); }
   function renderCard() {
-    const card = $('music'), show = !!(tok && now && Store.get('showMusic'));
+    const card = $('music'), show = !!(tok && now && Store.get('showMusic') && !Store.get('musicClock'));
     card.classList.toggle('on', show);
     card.setAttribute('aria-hidden', !show);
     const colours = Store.get('musicColors') && now && now.playing;
     if (!colours && window.MUSICPAL) { window.MUSICPAL = null; lastTrack = ''; window.StillPalette && StillPalette(); }
+    if (colours && now.art && now.id !== lastTrack) { lastTrack = now.id; artPalette(now.art); }
     if (!show) return;
     if (now.id !== $('music').dataset.id) {
       card.dataset.id = now.id;
@@ -166,7 +203,6 @@ window.Spotify = (() => {
       card.classList.remove('swap'); void card.offsetWidth; card.classList.add('swap');
     }
     card.classList.toggle('paused', !now.playing);
-    if (colours && now.art && now.id !== lastTrack) { lastTrack = now.id; artPalette(now.art); }
   }
   setInterval(() => {
     if (!now || !$('music').classList.contains('on')) return;
@@ -210,8 +246,8 @@ window.Spotify = (() => {
       e.stopPropagation();
       const b = e.target.closest('[data-m]'); if (b) control(b.dataset.m);
     });
-    Store.on(k => { if (k === 'showMusic' || k === 'musicColors') renderCard(); });
+    Store.on(k => { if (k === 'showMusic' || k === 'musicColors' || k === 'musicClock') renderCard(); });
     finishLogin().then(poll);
   }
-  return { row, init, get connected() { return !!tok; } };
+  return { row, init, state, control, seek, volume, play, get connected() { return !!tok; } };
 })();

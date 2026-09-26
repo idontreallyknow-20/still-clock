@@ -20,6 +20,7 @@ window.UI = (() => {
     ['Alarm', [
       { key: 'alarmOn', label: 'Alarm', type: 'toggle' },
       { key: 'alarmTime', label: 'Wake at', type: 'time' },
+      { key: 'alarmSpotify', label: 'Wake with Spotify', type: 'toggle' },
     ]],
     ['Sky · Richmond Hill', [
       { key: 'skyMode', type: 'seg', opts: [['real', 'Real time'], ['timelapse', 'Timelapse']] },
@@ -31,7 +32,9 @@ window.UI = (() => {
     ]],
     ['Music · Spotify', [
       { key: 'showMusic', label: 'Now playing', type: 'toggle' },
+      { key: 'musicClock', label: 'Built into the clock', type: 'toggle' },
       { key: 'musicColors', label: 'Colours from album art', type: 'toggle' },
+      { key: 'musicDuck', label: 'Hush chimes during songs', type: 'toggle' },
       { key: 'musicReact', label: 'Dance to music (mic)', type: 'toggle' },
       { key: 'reactGain', label: 'Sensitivity', type: 'range', min: 0.3, max: 2, step: 0.01 },
       { type: 'custom', make: () => Spotify.row() },

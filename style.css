@@ -389,3 +389,110 @@ body.idle .m-ctl { opacity: 0; }
 .sp-copy, .sp-go { font-size: 12px; padding: 7px 12px; border-radius: 99px; background: rgba(255, 255, 255, .08); color: #fff; transition: background-color .2s ease; }
 .sp-go { background: #1db954; color: #04150a; font-weight: 500; align-self: flex-start; }
 .sp.on .sp-go { background: rgba(255, 255, 255, .08); color: #fff; }
+
+/* ============ the clock is the player (js/music.js) ============ */
+/* the album art, blurred into a glow behind the clock; two layers crossfade between songs */
+#m-glow { position: fixed; left: 0; top: 0; width: 0; height: 0; z-index: 1; pointer-events: none; mix-blend-mode: screen; will-change: transform, opacity;
+  opacity: 0; transition: opacity 1.6s ease, transform 1.2s var(--ease), width 1.2s var(--ease), height 1.2s var(--ease); }
+#m-glow.on { opacity: .2; }
+body.music-playing #m-glow.on { opacity: .4; }
+#m-glow i { position: absolute; inset: 0; border-radius: 50%; background: center / cover no-repeat; filter: blur(60px) saturate(1.6);
+  opacity: 0; transition: opacity 2.2s ease; }
+#m-glow i.on { opacity: 1; }
+body.lite #m-glow, body.q3 #m-glow { display: none; }
+body.q2 #m-glow i { filter: blur(40px) saturate(1.5); }
+@media (prefers-reduced-motion: no-preference) { body.music-playing #m-glow.on { animation: m-breathe 7s ease-in-out infinite alternate; } }
+@keyframes m-breathe { from { scale: .94; } to { scale: 1.06; } }
+
+/* the song line under the time: art and title, a seek bar, then position · controls · when it ends */
+#song { width: min(460px, 100%); display: flex; flex-direction: column; align-items: stretch; gap: 8px; pointer-events: none;
+  max-height: 0; opacity: 0; overflow: hidden; margin-top: -14px; filter: blur(6px);
+  transition: max-height .9s var(--ease), opacity .7s ease, margin-top .9s var(--ease), filter .7s ease; }
+#song.on { max-height: 120px; opacity: 1; filter: none; pointer-events: auto; margin-top: 6px; }
+.s-now { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 14px; min-width: 0; }
+#s-art { width: 42px; height: 42px; border-radius: 10px; object-fit: cover; flex: none; background: rgba(255, 255, 255, .06);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, .1), 0 8px 30px -6px var(--glow), 0 0 50px -18px var(--a1);
+  transition: filter .8s ease, transform .8s var(--ease), box-shadow .8s ease; }
+#song.paused #s-art { filter: saturate(.3) brightness(.7); transform: scale(.94); box-shadow: 0 0 0 1px rgba(255, 255, 255, .08); }
+.s-txt { min-width: 0; text-align: left; }
+#s-title { font-weight: 300; font-size: clamp(15px, 1.1vw + 7px, 21px); letter-spacing: .015em; color: var(--t1); line-height: 1.2;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-shadow: 0 0 20px color-mix(in srgb, var(--glow) 55%, transparent);
+  transition: opacity .8s ease, text-shadow .8s ease; }
+#song.paused #s-title { opacity: .6; text-shadow: none; }
+.s-sub { display: flex; align-items: center; gap: 8px; margin-top: 4px; min-width: 0; }
+.s-sub { font-family: var(--mono); font-weight: 300; font-size: clamp(9px, .6vw + 4px, 10.5px); letter-spacing: .2em; text-transform: uppercase;
+  color: color-mix(in srgb, var(--t2) 62%, transparent); white-space: nowrap; }
+#s-artist { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.s-dot { opacity: .5; flex: none; }
+#s-end { flex: none; color: color-mix(in srgb, var(--t2) 45%, transparent); }
+/* four little bars that dance while the song plays and lie down when it pauses */
+.s-eq { display: flex; align-items: flex-end; gap: 2px; height: 10px; flex: none; }
+.s-eq i { width: 2px; height: 100%; border-radius: 1px; background: linear-gradient(var(--a1), var(--a2)); transform-origin: bottom;
+  animation: s-eq 1.1s ease-in-out infinite alternate; transition: transform .6s ease; }
+.s-eq i:nth-child(2) { animation-duration: .8s; animation-delay: -.3s; }
+.s-eq i:nth-child(3) { animation-duration: 1.3s; animation-delay: -.7s; }
+.s-eq i:nth-child(4) { animation-duration: .95s; animation-delay: -.5s; }
+@keyframes s-eq { from { transform: scaleY(.2); } to { transform: scaleY(1); } }
+#song.paused .s-eq i { animation: none; transform: scaleY(.2); }
+@media (prefers-reduced-motion: reduce) { .s-eq i { animation: none; transform: scaleY(.5); } }
+
+.s-bar { position: relative; height: 16px; cursor: pointer; }
+.s-bar::before { content: ''; position: absolute; left: 0; right: 0; top: 7px; height: 2px; border-radius: 2px; background: rgba(255, 255, 255, .1);
+  transition: top .25s var(--ease), height .25s var(--ease); }
+.s-bar i { position: absolute; left: 0; right: 0; top: 7px; height: 2px; border-radius: 2px; transform-origin: left; transform: scaleX(0);
+  background: linear-gradient(90deg, color-mix(in srgb, var(--a1) 40%, transparent), var(--a1) 30%, var(--a2) 70%, var(--a3));
+  transition: transform .25s linear, top .25s var(--ease), height .25s var(--ease), filter .8s ease; }
+/* the head: a bead of light riding the end of the bar, like the minute bar's */
+.s-head { position: absolute; top: 8px; left: 0; width: 7px; height: 7px; margin: -3.5px 0 0 -3.5px; border-radius: 50%; background: var(--t1);
+  box-shadow: 0 0 8px 2px var(--glow), 0 0 22px 6px color-mix(in srgb, var(--glow) 45%, transparent);
+  transition: left .25s linear, transform .3s var(--spring), opacity .6s ease, box-shadow .8s ease; }
+#song.paused .s-bar i { filter: saturate(.3) brightness(.8); }
+#song.paused .s-head { box-shadow: 0 0 6px 1px color-mix(in srgb, var(--glow) 50%, transparent); animation: s-wait 2.4s ease-in-out infinite; }
+@keyframes s-wait { 50% { opacity: .35; } }
+.s-tip { position: absolute; bottom: 18px; left: 0; translate: -50% 0; padding: 3px 7px; border-radius: 7px; font: 400 9.5px var(--mono); letter-spacing: .08em;
+  color: var(--t1); background: rgba(10, 12, 20, .72); border: 1px solid rgba(255, 255, 255, .1); opacity: 0; pointer-events: none;
+  transform: translateY(4px); transition: opacity .2s ease, transform .2s ease; }
+@media (hover: hover) and (pointer: fine) {
+  .s-bar:hover::before, .s-bar:hover i { top: 6px; height: 4px; }
+  .s-bar:hover .s-head { transform: scale(1.35); }
+  .s-bar:hover .s-tip { opacity: 1; transform: none; }
+}
+/* the tooltip needs room above the bar, so the block can't clip it */
+#song.on { overflow: visible; }
+
+.s-row { display: grid; grid-template-columns: 3.4em minmax(0, 1fr) 3.4em; align-items: center; gap: 10px; font-family: var(--mono); font-weight: 300; font-size: 10px;
+  letter-spacing: .06em; color: color-mix(in srgb, var(--t2) 55%, transparent); white-space: nowrap; font-variant-numeric: tabular-nums; }
+#s-pos { text-align: right; } #s-dur { text-align: left; }
+.s-ctl { display: flex; align-items: center; gap: 6px; transition: opacity .5s ease, transform .5s var(--ease); }
+body.idle .s-ctl { opacity: 0; transform: translateX(6px) scale(.92); pointer-events: none; }
+.s-ctl button { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; color: color-mix(in srgb, var(--t1) 72%, transparent);
+  transition: background-color .25s ease, color .25s ease, transform .2s var(--spring); }
+.s-ctl button:active { transform: scale(.88); }
+.s-ctl .s-pp { width: 38px; height: 38px; color: var(--t1); background: rgba(255, 255, 255, .08);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .12), 0 0 20px -4px var(--glow); }
+@media (hover: hover) and (pointer: fine) { .s-ctl button:hover { background: rgba(255, 255, 255, .14); color: var(--t1); } .s-ctl .s-pp:hover { transform: scale(1.06); } }
+#song .s-play { display: none; } #song.paused .s-play { display: block; } #song.paused .s-pause { display: none; }
+/* a new song arrives out of a soft blur */
+#song.swap .s-now { animation: s-in .9s cubic-bezier(0.23, 1, 0.32, 1); }
+#song.swap #s-art { animation: s-art-in 1s cubic-bezier(0.23, 1, 0.32, 1); }
+@keyframes s-in { from { opacity: 0; filter: blur(8px); transform: translateY(6px); } }
+@keyframes s-art-in { from { opacity: 0; transform: scale(.7) rotate(-6deg); } }
+@media (prefers-reduced-motion: reduce) { #song.swap .s-now, #song.swap #s-art { animation: none; } #song { filter: none; } }
+@media (max-width: 600px) {
+  #song { width: 100%; }
+  .s-now { gap: 10px; }
+  .s-row { font-size: 9px; gap: 8px; }
+  .s-ctl { gap: 2px; }
+  .s-dot, #s-end { display: none; }
+  .s-ctl button { width: 28px; height: 28px; } .s-ctl .s-pp { width: 34px; height: 34px; }
+}
+
+/* Glass: the album art glowing inside the pane, and the song's progress as a thread of light along its bottom edge */
+.g-art { position: absolute; inset: -20%; background: var(--m-art, none) center / cover no-repeat; filter: blur(34px) saturate(1.5);
+  opacity: 0; transition: opacity 1.6s ease; mix-blend-mode: screen; }
+body.music-on .g-art { opacity: .22; }
+body.music-playing .g-art { opacity: .34; }
+.g-song { position: absolute; left: 7%; right: 7%; bottom: .045em; height: .006em; min-height: 2px; border-radius: 2px; transform-origin: left; transform: scaleX(0);
+  background: linear-gradient(90deg, transparent, var(--a1), var(--t1)); box-shadow: 0 0 .05em var(--glow); opacity: 0; transition: opacity 1s ease, transform .25s linear; }
+body.music-on .g-song { opacity: .9; }
+body.lite .g-art, body.q3 .g-art { display: none; }

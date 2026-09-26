@@ -50,8 +50,9 @@ function Glass() {
     mount(r) {
       root = r;
       /* a pane of frosted glass floats behind the digits: it blurs the real sky through it, catches a
-         highlight where the pointer is, and the whole slab tilts toward you in 3D */
-      r.innerHTML = '<div class="glass"><div class="g-pane"><i class="g-caustic"></i><i class="g-sheen"></i><i class="g-edge"></i></div><div class="g-row"><div class="g-time"></div><div class="g-sec"></div></div></div>';
+         highlight where the pointer is, and the whole slab tilts toward you in 3D. While a song plays its
+         album art glows inside the glass and a thread of light along the bottom edge is the song's progress */
+      r.innerHTML = '<div class="glass"><div class="g-pane"><i class="g-art"></i><i class="g-caustic"></i><i class="g-sheen"></i><i class="g-edge"></i><i class="g-song m-pbar"></i></div><div class="g-row"><div class="g-time"></div><div class="g-sec"></div></div></div>';
       wrap = r.firstChild; pane = r.querySelector('.g-pane'); row = r.querySelector('.g-row'); time = r.querySelector('.g-time'); sec = r.querySelector('.g-sec');
     },
     frame() {
@@ -405,6 +406,14 @@ function Orbit() {
           comet(rs, a, 0.45, 1.2, [p.a, p.b, p.c][i]);
         }
       }
+      /* the song, as an outer ring that fills while it plays (music.js) */
+      const ms = window.Music && Music.state();
+      if (ms) {
+        const rr = R * 1.15, a = -Math.PI / 2 + ms.p * TAU;
+        arc(rr, 0, TAU, 1, Col.rgba(p.t2, 0.06));
+        arc(rr, -Math.PI / 2, a, R * 0.01, Col.rgba(Col.mix(p.a, p.c, 0.5), ms.playing ? 0.6 : 0.25));
+        comet(rr, a, 0.6, R * 0.012, ms.playing ? p.c : p.t2);
+      }
       ctx.restore();
 
       /* numerals and the time, drawn flat so they stay crisp */
@@ -469,8 +478,10 @@ window.Faces = (() => {
   }
   function placeMeta() {
     if (!cur) return;
-    const y = Math.min(innerHeight - 90, cur.bottom());
-    document.getElementById('meta').style.top = y + 'px';
+    /* the meta block grows when a song joins it (music.js): keep all of it on screen */
+    const meta = document.getElementById('meta');
+    const y = Math.min(innerHeight - Math.max(90, meta.offsetHeight + 24), cur.bottom());
+    meta.style.top = y + 'px';
   }
   return {
     show, placeMeta,

@@ -17,6 +17,7 @@
 <div id="titlebar"></div>
 <canvas id="bg"></canvas>
 <canvas id="sky"></canvas>
+<div id="m-glow" aria-hidden="true"><i></i><i></i></div>
 <canvas id="gl"></canvas>
 <canvas id="fx"></canvas>
 <main id="stage">
@@ -25,6 +26,18 @@
     <div id="progress"><i></i></div>
     <div id="date"><span id="ampm"></span><span id="dtext"></span></div>
     <div id="wx"></div>
+    <div id="song" aria-hidden="true">
+      <div class="s-now">
+        <img id="s-art" alt="">
+        <div class="s-txt"><p id="s-title"></p><p class="s-sub"><span class="s-eq" aria-hidden="true"><i></i><i></i><i></i><i></i></span><span id="s-artist"></span><span class="s-dot">·</span><span id="s-end"></span></p></div>
+        <span class="s-ctl">
+          <button data-m="prev" aria-label="Previous (J)"><svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor"><path d="M6 5h2v14H6zM20 5v14L9 12z"/></svg></button>
+          <button data-m="toggle" class="s-pp" aria-label="Play or pause (K)"><svg class="s-pause" viewBox="0 0 24 24" width="15" height="15" fill="currentColor"><path d="M7 5h3.5v14H7zM13.5 5H17v14h-3.5z"/></svg><svg class="s-play" viewBox="0 0 24 24" width="15" height="15" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></button>
+          <button data-m="next" aria-label="Next (L)"><svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor"><path d="M16 5h2v14h-2zM4 5v14l11-7z"/></svg></button>
+        </span>
+      </div>
+      <div class="s-row"><span id="s-pos"></span><div class="s-bar" aria-label="Seek"><i class="m-pbar"></i><b class="s-head"></b><span class="s-tip"></span></div><span id="s-dur"></span></div>
+    </div>
   </div>
 </main>
 <div id="toast"></div>
@@ -63,7 +76,7 @@
   <div id="rows"></div>
   <footer>
     <div class="btns"><button data-act="fullscreen">Fullscreen</button><button data-act="reset">Reset</button><button data-act="install" hidden>Install app</button></div>
-    <p class="keys">S settings · F fullscreen · M mute · 1–5 face<br>P palette · W weather · T timelapse<br>↑↓ brightness · Space aurora surge</p>
+    <p class="keys">S settings · F fullscreen · M mute · 1–5 face<br>P palette · W weather · T timelapse<br>↑↓ brightness · Space aurora surge<br>J K L previous · play · next<br>scroll the clock for Spotify volume</p>
     <p class="credit">made by <b>Joseph</b></p>
   </footer>
 </aside>
@@ -78,6 +91,7 @@
 <script src="js/sky.js"></script>
 <script src="js/faces.js"></script>
 <script src="js/spotify.js"></script>
+<script src="js/music.js"></script>
 <script src="js/beat.js"></script>
 <script src="js/listen.js"></script>
 <script src="js/ui.js"></script>
