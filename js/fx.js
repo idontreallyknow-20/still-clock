@@ -2,14 +2,14 @@
 window.FX = (() => {
   const cv = document.getElementById('fx'), ctx = cv.getContext('2d');
   let W = 0, H = 0, dpr = 1, parts = [], rings = [], shoots = [];
-  let nextShoot = performance.now() + 4000;
+  let nextShoot = performance.now() + 4000, clean = false;
   const mouse = { x: -1e4, y: -1e4, lx: null, ly: null, nx: 0, ny: 0 }, par = { x: 0, y: 0 };
   const R = Math.random, TAU = Math.PI * 2;
 
   function resize() {
     dpr = Math.min(devicePixelRatio || 1, LITE() ? 1 : [2, 1.5, 1, 1][QUALITY.tier]);
     W = innerWidth; H = innerHeight;
-    cv.width = W * dpr; cv.height = H * dpr;
+    cv.width = W * dpr; cv.height = H * dpr; clean = true;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   }
 
@@ -35,8 +35,12 @@ window.FX = (() => {
 
   function frame(dt, now) {
     const k = Math.min(3, dt / 16.67), m = MOTION(), p = pal();
-    ctx.clearRect(0, 0, W, H);
+    /* nothing on the layer and nothing to draw: skip the clear, so an idle frame costs nothing */
+    const busy = shoots.length || rings.length || parts.length || (now > nextShoot && window.Sky && Sky.dark > 0.6);
     par.x += (mouse.nx - par.x) * 0.04; par.y += (mouse.ny - par.y) * 0.04;
+    if (!busy && clean) return;
+    ctx.clearRect(0, 0, W, H);
+    clean = !busy;
 
     ctx.globalCompositeOperation = 'lighter';
 

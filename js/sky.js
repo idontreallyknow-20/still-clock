@@ -648,7 +648,7 @@ window.Sky = (() => {
     ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1;
   }
 
-  let acc = 0, skipF = false;
+  let acc = 0, skipF = false, camPxs = 1e9;
   function frame(dt, now) {
     /* a window can report 0x0 while it is still opening; wait until it has a real size */
     if (!W || !H || W !== innerWidth || H !== innerHeight) { if (!innerWidth || !innerHeight) return; resize(); }
@@ -656,7 +656,13 @@ window.Sky = (() => {
     if (!isFinite(skyMs)) skyMs = Date.now();
     if (!isFinite(cam.yaw) || !isFinite(cam.pitch)) { cam.yaw = Math.PI; cam.pitch = 20 * D2R; }
     const lite = LITE();
-    if (lite) { acc += dt; skipF = !skipF; if (skipF) { tickTime(); return; } dt = acc; acc = 0; }
+    /* the sky moves slowly: while the camera drifts under 15 px/s on screen (so a 30 fps repaint steps
+       at most half a pixel) and there's no lightning, timelapse or 2D rain, it repaints every other frame,
+       which halves its cost and the glass blur over it */
+    const settled = camPxs < 15 && flash <= 0 && Store.get('skyMode') !== 'timelapse' &&
+      (wx.rain + wx.snow < 0.05 || !!(window.GL3D && GL3D.weather));
+    if (lite || settled) { acc += dt; skipF = !skipF; if (skipF) { tickTime(); return; } dt = acc; acc = 0; }
+    else if (acc) { dt += acc; acc = 0; }
     tickTime();
     const k = Math.min(3, dt / 16.67);
     for (const key of ['cloud', 'rain', 'snow', 'storm', 'fog', 'wind', 'gust']) { wx[key] += ((+target[key] || 0) - wx[key]) * Math.min(1, dt / 2500); if (!isFinite(wx[key])) wx[key] = 0; }
@@ -684,8 +690,10 @@ window.Sky = (() => {
     const bodyAlt = body === mAz ? mAlt : sAlt;
     yawT = focus + Math.sin(now / 95000) * 0.1 + (mouse.nx || 0) * 0.18;
     pitchT = clamp((body !== null ? bodyAlt * R2D - 24 : 16), 10, 26) * D2R - (mouse.ny || 0) * 0.08 + Math.sin(now / 70000) * 0.02;
+    const yaw0 = cam.yaw, pitch0 = cam.pitch;
     cam.yaw += wrap(yawT - cam.yaw) * 0.02 * k;
     cam.pitch += (pitchT - cam.pitch) * 0.02 * k;
+    camPxs = (Math.abs(wrap(cam.yaw - yaw0)) + Math.abs(cam.pitch - pitch0)) * focal / Math.max(1e-3, dt / 1000);
     camPrep();
     hy = H / 2 + Math.tan(cam.pitch) * focal;
 
