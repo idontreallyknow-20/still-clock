@@ -22,16 +22,22 @@ window.Sky = (() => {
     'Asia/Shanghai': [31.2, 121.5], 'Asia/Kolkata': [28.6, 77.2], 'Asia/Dubai': [25.2, 55.3], 'Asia/Singapore': [1.35, 103.8], 'Asia/Seoul': [37.6, 127],
     'Australia/Sydney': [-33.9, 151.2], 'Australia/Melbourne': [-37.8, 145], 'Pacific/Auckland': [-36.85, 174.8], 'Africa/Johannesburg': [-26.2, 28],
   };
-  let loc = (() => {
-    try { const l = JSON.parse(localStorage.getItem('still.loc')); if (l && isFinite(l.lat)) return l; } catch (e) {}
+  const validLoc = l => l && isFinite(l.lat) && isFinite(l.lon) && Math.abs(l.lat) <= 90 && Math.abs(l.lon) <= 180;
+  function guessLoc() {
     const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || '';
     if (TZ[tz]) return { lat: TZ[tz][0], lon: TZ[tz][1], guess: true };
     return { lat: /^(Australia|Pacific\/Auck|America\/(Sao|Argentina|Santiago))/.test(tz) ? -30 : 40, lon: -new Date().getTimezoneOffset() / 4, guess: true };
+  }
+  let loc = (() => {
+    try { const l = JSON.parse(localStorage.getItem('still.loc')); if (validLoc(l)) return { lat: +l.lat, lon: +l.lon }; } catch (e) {}
+    return guessLoc();
   })();
   function locate() {
     if (!loc.guess || !navigator.geolocation) return;
     navigator.geolocation.getCurrentPosition(p => {
-      loc = { lat: p.coords.latitude, lon: p.coords.longitude };
+      const l = { lat: p.coords.latitude, lon: p.coords.longitude };
+      if (!validLoc(l)) return;
+      loc = l;
       try { localStorage.setItem('still.loc', JSON.stringify(loc)); } catch (e) {}
       fetchWeather();
     }, () => {}, { maximumAge: 36e5, timeout: 15000 });
@@ -179,6 +185,12 @@ window.Sky = (() => {
       gr.addColorStop(0, 'rgba(255,255,255,.55)'); gr.addColorStop(0.6, 'rgba(255,255,255,.25)'); gr.addColorStop(1, 'rgba(255,255,255,0)');
       g.fillStyle = gr; g.fillRect(0, 0, w, h);
     }
+    /* feather the edges: puffs near the border were clipped into hard rectangles */
+    g.globalCompositeOperation = 'destination-in';
+    g.setTransform(1, 0, 0, h / w, 0, 0);
+    const fe = g.createRadialGradient(w / 2, w / 2, 0, w / 2, w / 2, w / 2);
+    fe.addColorStop(0.45, 'rgba(0,0,0,1)'); fe.addColorStop(1, 'rgba(0,0,0,0)');
+    g.fillStyle = fe; g.fillRect(0, 0, w, w);
     return c;
   });
   const cloudTint = cloudMasks.map(m => { const c = document.createElement('canvas'); c.width = m.width; c.height = m.height; return c; });
@@ -220,7 +232,7 @@ window.Sky = (() => {
   let target = { ...PRESET.clear }, wx = { ...PRESET.clear }, live = null, lastFetch = 0;
   const useF = /US|LR|MM/.test(Intl.NumberFormat().resolvedOptions().locale || navigator.language || '');
   function fromCode(c, cc, wind) {
-    const o = { cloud: cc / 100, rain: 0, snow: 0, storm: 0, fog: 0, wind: Math.min(1, wind / 45), label: 'clear' };
+    const o = { cloud: Math.min(1, (+cc || 0) / 100), rain: 0, snow: 0, storm: 0, fog: 0, wind: Math.min(1, (+wind || 0) / 45), label: 'clear' };
     if (c === 1) o.label = 'mostly clear'; else if (c === 2) o.label = 'partly cloudy'; else if (c === 3) o.label = 'overcast';
     else if (c === 45 || c === 48) { o.fog = 0.85; o.label = 'fog'; }
     else if (c >= 51 && c <= 57) { o.rain = 0.25; o.fog = 0.2; o.label = 'drizzle'; }
@@ -237,7 +249,7 @@ window.Sky = (() => {
     try {
       const u = `https://api.open-meteo.com/v1/forecast?latitude=${loc.lat.toFixed(2)}&longitude=${loc.lon.toFixed(2)}&current=temperature_2m,weather_code,cloud_cover,wind_speed_10m${useF ? '&temperature_unit=fahrenheit' : ''}`;
       const j = await (await fetch(u)).json(), c = j.current;
-      live = { ...fromCode(c.weather_code, c.cloud_cover, c.wind_speed_10m), temp: Math.round(c.temperature_2m) };
+      live = { ...fromCode(+c.weather_code, c.cloud_cover, c.wind_speed_10m), temp: isFinite(c.temperature_2m) ? Math.round(c.temperature_2m) : undefined };
       if (Store.get('weather') === 'live') target = live;
     } catch (e) { live = null; }
   }
@@ -353,13 +365,105 @@ window.Sky = (() => {
 
   function wrap(a) { return Math.atan2(Math.sin(a), Math.cos(a)); }
 
+  /* the star layer: Milky Way haze, stars and constellation figures, painted at the current camera */
+  const starCv = document.createElement('canvas'), starCam = { yaw: 0, pitch: 0 };
+  let starAge = 1e9, starVis = -1, starW = 0, starH = 0;
+  function paintStars(lst, vis, lite, p, now) {
+    const ctx = starCv.getContext('2d');
+    if (starCv.width !== cv.width || starCv.height !== cv.height) { starCv.width = cv.width; starCv.height = cv.height; }
+    starW = cv.width; starH = cv.height;
+    ctx.setTransform(cv.width / W, 0, 0, cv.height / H, 0, 0);
+    ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1;
+    ctx.clearRect(0, 0, W, H);
+    const scint = Store.get('motion') === 'calm' ? 0.12 : 0.3;
+
+    /* Milky Way haze */
+    if (vis > 0.02 && !lite) {
+      ctx.globalCompositeOperation = 'lighter';
+      const sp = Math.sin(loc.lat * D2R), cp = Math.cos(loc.lat * D2R);
+      for (const h of haze) {
+        const HA = (lst - h.ra) * D2R;
+        const alt = Math.asin(sp * h.sd + cp * h.cd * Math.cos(HA));
+        if (alt < -0.05) continue;
+        const az = Math.atan2(-Math.sin(HA) * h.cd, cp * h.sd - sp * h.cd * Math.cos(HA));
+        project(alt, az); if (P[2] < 0) continue;
+        const r = h.size * focal / P[2];
+        ctx.globalAlpha = h.a * vis * 0.1 * sstep(-0.05, 0.3, alt);
+        if (h.dark) { ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha *= 1.4; ctx.drawImage(hazeS, P[0] - r * 0.4, P[1] - r * 0.2, r * 0.8, r * 0.4); ctx.globalCompositeOperation = 'lighter'; continue; }
+        ctx.drawImage(h.warm ? hazeW : hazeS, P[0] - r, P[1] - r, r * 2, r * 2);
+      }
+    }
+
+    /* stars */
+    if (vis > 0.01) {
+      ctx.globalCompositeOperation = 'lighter';
+      const sp = Math.sin(loc.lat * D2R), cp = Math.cos(loc.lat * D2R), t = now * 0.001;
+      const buckets = [[], [], []];
+      for (const s of stars) {
+        if (lite && s.mag > 5.4) { s.a = 0; continue; }
+        const HA = (lst - s.ra) * D2R, cH = Math.cos(HA);
+        const salt = sp * s.sd + cp * s.cd * cH;
+        if (salt < -0.02) { s.a = 0; continue; }
+        const alt = Math.asin(salt), az = Math.atan2(-Math.sin(HA) * s.cd, cp * s.sd - sp * s.cd * cH);
+        project(alt, az); if (P[2] < 0) { s.a = 0; continue; }
+        const ext = sstep(-0.01, 0.35, salt), tw = 1 - scint * (0.5 + 0.5 * Math.sin(t * s.sp + s.ph)) * (1.4 - ext);
+        s.x = P[0]; s.y = P[1];
+        s.a = Math.pow(clamp((6.9 - s.mag) / 5.2, 0.08, 1), 0.72) * vis * ext * tw;
+        if (s.a > 0.01) buckets[s.col].push(s);
+      }
+      buckets.forEach((b, ci) => {
+        ctx.fillStyle = css(STAR_COL[ci]);
+        for (const s of b) {
+          const r = Math.max(0.7, (4.6 - s.mag) * 0.45);
+          ctx.globalAlpha = s.a;
+          if (s.mag < 2.2) {
+            const g = r * 7;
+            ctx.drawImage(glowS[ci], s.x - g / 2, s.y - g / 2, g, g);
+            if (s.mag < 0.6) {
+              ctx.globalAlpha = s.a * 0.35; ctx.fillRect(s.x - r * 7, s.y - 0.4, r * 14, 0.8); ctx.fillRect(s.x - 0.4, s.y - r * 7, 0.8, r * 14);
+            }
+          } else ctx.fillRect(s.x - r / 2, s.y - r / 2, r, r);
+        }
+      });
+      /* constellation lines and names */
+      if (Store.get('lines') && vis > 0.15) {
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.lineWidth = 0.8;
+        ctx.font = '500 9px "JetBrains Mono", Consolas, monospace';
+        ctx.textAlign = 'center';
+        for (const [name, lines] of CONS) {
+          let sx = 0, sy = 0, n = 0;
+          ctx.strokeStyle = css(hex(p.t2), 0.16 * vis);
+          ctx.beginPath();
+          for (const [a, b] of lines) {
+            const A = idx[a], B = idx[b];
+            if (A.a <= 0.01 || B.a <= 0.01) continue;
+            const dx = B.x - A.x, dy = B.y - A.y, L = Math.hypot(dx, dy); if (L < 1 || L > W) continue;
+            const g = Math.min(7, L * 0.2);
+            ctx.moveTo(A.x + dx / L * g, A.y + dy / L * g); ctx.lineTo(B.x - dx / L * g, B.y - dy / L * g);
+            sx += A.x + B.x; sy += A.y + B.y; n += 2;
+          }
+          ctx.stroke();
+          if (n >= 4) { ctx.fillStyle = css(hex(p.t2), 0.28 * vis); ctx.fillText(name.toUpperCase().split('').join(' '), sx / n, sy / n + 26); }
+        }
+      }
+    }
+    ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1;
+  }
+
   let acc = 0, skipF = false;
   function frame(dt, now) {
+    /* a window can report 0x0 while it is still opening; wait until it has a real size */
+    if (!W || !H || W !== innerWidth || H !== innerHeight) { if (!innerWidth || !innerHeight) return; resize(); }
+    /* self-repair: one bad number (a broken saved location, a clock jump) would otherwise poison the camera forever */
+    if (!validLoc(loc)) loc = guessLoc();
+    if (!isFinite(skyMs)) skyMs = Date.now();
+    if (!isFinite(cam.yaw) || !isFinite(cam.pitch)) { cam.yaw = Math.PI; cam.pitch = 20 * D2R; }
     const lite = LITE();
     if (lite) { acc += dt; skipF = !skipF; if (skipF) { tickTime(); return; } dt = acc; acc = 0; }
     tickTime();
     const k = Math.min(3, dt / 16.67);
-    for (const key of ['cloud', 'rain', 'snow', 'storm', 'fog', 'wind']) wx[key] += (target[key] - wx[key]) * Math.min(1, dt / 2500);
+    for (const key of ['cloud', 'rain', 'snow', 'storm', 'fog', 'wind']) { wx[key] += ((+target[key] || 0) - wx[key]) * Math.min(1, dt / 2500); if (!isFinite(wx[key])) wx[key] = 0; }
     if (Store.get('weather') === 'live' && Date.now() - lastFetch > 15 * 6e4) fetchWeather();
 
     /* astronomy for this instant */
@@ -411,78 +515,23 @@ window.Sky = (() => {
 
     ctx.clearRect(0, 0, W, H);
     const vis = dark * (1 - cloud * 0.92);
-    const scint = Store.get('motion') === 'calm' ? 0.12 : 0.3;
 
-    /* Milky Way haze */
-    if (vis > 0.02 && !lite) {
-      ctx.globalCompositeOperation = 'lighter';
-      const sp = Math.sin(loc.lat * D2R), cp = Math.cos(loc.lat * D2R);
-      for (const h of haze) {
-        const HA = (lst - h.ra) * D2R;
-        const alt = Math.asin(sp * h.sd + cp * h.cd * Math.cos(HA));
-        if (alt < -0.05) continue;
-        const az = Math.atan2(-Math.sin(HA) * h.cd, cp * h.sd - sp * h.cd * Math.cos(HA));
-        project(alt, az); if (P[2] < 0) continue;
-        const r = h.size * focal / P[2];
-        ctx.globalAlpha = h.a * vis * 0.1 * sstep(-0.05, 0.3, alt);
-        if (h.dark) { ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha *= 1.4; ctx.drawImage(hazeS, P[0] - r * 0.4, P[1] - r * 0.2, r * 0.8, r * 0.4); ctx.globalCompositeOperation = 'lighter'; continue; }
-        ctx.drawImage(h.warm ? hazeW : hazeS, P[0] - r, P[1] - r, r * 2, r * 2);
-      }
-    }
-
-    /* stars */
+    /* the star field is the costly part (thousands of stars, each with its own trig): paint it into its
+       own layer about ten times a second, and slide that layer with the camera in between */
+    starAge += dt;
     if (vis > 0.01) {
-      ctx.globalCompositeOperation = 'lighter';
-      const sp = Math.sin(loc.lat * D2R), cp = Math.cos(loc.lat * D2R), t = now * 0.001;
-      const buckets = [[], [], []];
-      for (const s of stars) {
-        if (lite && s.mag > 5.4) { s.a = 0; continue; }
-        const HA = (lst - s.ra) * D2R, cH = Math.cos(HA);
-        const salt = sp * s.sd + cp * s.cd * cH;
-        if (salt < -0.02) { s.a = 0; continue; }
-        const alt = Math.asin(salt), az = Math.atan2(-Math.sin(HA) * s.cd, cp * s.sd - sp * s.cd * cH);
-        project(alt, az); if (P[2] < 0) { s.a = 0; continue; }
-        const ext = sstep(-0.01, 0.35, salt), tw = 1 - scint * (0.5 + 0.5 * Math.sin(t * s.sp + s.ph)) * (1.4 - ext);
-        s.x = P[0]; s.y = P[1];
-        s.a = clamp((6.9 - s.mag) / 5.2, 0.06, 1) * vis * ext * tw;
-        if (s.a > 0.01) buckets[s.col].push(s);
+      let ox = 0, oy = 0, fresh = starAge > 100 || starW !== cv.width || starH !== cv.height || Math.abs(starVis - vis) > 0.04;
+      if (!fresh) {
+        project(starCam.pitch, starCam.yaw);
+        ox = P[0] - W / 2; oy = P[1] - H / 2;
+        if (P[2] < 0 || Math.abs(ox) + Math.abs(oy) > 40) fresh = true;
       }
-      buckets.forEach((b, ci) => {
-        ctx.fillStyle = css(STAR_COL[ci]);
-        for (const s of b) {
-          const r = Math.max(0.7, (4.6 - s.mag) * 0.45);
-          ctx.globalAlpha = s.a;
-          if (s.mag < 2.2) {
-            const g = r * 7;
-            ctx.drawImage(glowS[ci], s.x - g / 2, s.y - g / 2, g, g);
-            if (s.mag < 0.6) {
-              ctx.globalAlpha = s.a * 0.35; ctx.fillRect(s.x - r * 7, s.y - 0.4, r * 14, 0.8); ctx.fillRect(s.x - 0.4, s.y - r * 7, 0.8, r * 14);
-            }
-          } else ctx.fillRect(s.x - r / 2, s.y - r / 2, r, r);
-        }
-      });
-      /* constellation lines and names */
-      if (Store.get('lines') && vis > 0.15) {
-        ctx.globalCompositeOperation = 'source-over';
-        ctx.lineWidth = 0.8;
-        ctx.font = '500 9px "JetBrains Mono", Consolas, monospace';
-        ctx.textAlign = 'center';
-        for (const [name, lines] of CONS) {
-          let sx = 0, sy = 0, n = 0;
-          ctx.strokeStyle = css(hex(p.t2), 0.16 * vis);
-          ctx.beginPath();
-          for (const [a, b] of lines) {
-            const A = idx[a], B = idx[b];
-            if (A.a <= 0.01 || B.a <= 0.01) continue;
-            const dx = B.x - A.x, dy = B.y - A.y, L = Math.hypot(dx, dy); if (L < 1 || L > W) continue;
-            const g = Math.min(7, L * 0.2);
-            ctx.moveTo(A.x + dx / L * g, A.y + dy / L * g); ctx.lineTo(B.x - dx / L * g, B.y - dy / L * g);
-            sx += A.x + B.x; sy += A.y + B.y; n += 2;
-          }
-          ctx.stroke();
-          if (n >= 4) { ctx.fillStyle = css(hex(p.t2), 0.28 * vis); ctx.fillText(name.toUpperCase().split('').join(' '), sx / n, sy / n + 26); }
-        }
+      if (fresh) {
+        paintStars(lst, vis, lite, p, now);
+        starAge = 0; starVis = vis; starCam.yaw = cam.yaw; starCam.pitch = cam.pitch; ox = oy = 0;
       }
+      ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1;
+      ctx.drawImage(starCv, ox, oy, W, H);
     }
 
     /* satellites crossing the dark sky */

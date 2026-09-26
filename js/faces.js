@@ -39,6 +39,10 @@ function Glass() {
     let j = 0;
     chars.forEach((c, i) => { if (slots[i].dataset.c !== c) put(slots[i], c, j++ * 75, sparks); });
   }
+  /* a single band of light across the glass whenever the time changes */
+  function sweep(delay) {
+    setTimeout(() => { time.classList.remove('sweep'); void time.offsetWidth; time.classList.add('sweep'); }, delay);
+  }
   return {
     mount(r) {
       root = r;
@@ -48,6 +52,8 @@ function Glass() {
     set(t, first) {
       const on = Store.get('seconds');
       wrap.classList.toggle('has-sec', on);
+      if (first || time.dataset.hm !== t.hm) sweep(first ? 1300 : 0);
+      time.dataset.hm = t.hm;
       write(time, t.hm, first, !first);
       write(sec, on ? t.ss : '', first, false);
     },
@@ -63,7 +69,7 @@ function Glass() {
 
 /* ============ SWARM — thousands of particles that hold the shape of the time ============ */
 function Swarm() {
-  let cv, ctx, W, H, P = [], dying = [], str = '', box = { cx: 0, cy: 0, bottom: 0, left: 0, w: 1 }, cols = [], palName = '';
+  let cv, ctx, gcv, gctx, W, H, P = [], dying = [], str = '', box = { cx: 0, cy: 0, bottom: 0, left: 0, w: 1 }, cols = [], palName = '';
   const mouse = FX.mouse, NB = 8;
   const buckets = Array.from({ length: NB }, () => []);
 
@@ -102,7 +108,22 @@ function Swarm() {
       if (p.x < minX) minX = p.x; if (p.x > maxX) maxX = p.x;
     }
     box = { cx: W / 2, cy: (minY + maxY) / 2, bottom: maxY + fs * 0.1, left: minX, w: Math.max(1, maxX - minX) };
+    glow(s, font, fs, ox + tw / 2, oy + th / 2);
     return pts;
+  }
+  /* the luminous core: the time's shape, blurred, on a cheap half-res canvas; the swarm streams over it */
+  function glow(s, font, fs, x, y) {
+    if (!gctx) return;
+    const k = gcv.width / W, p = pal(), g = gctx;
+    g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, gcv.width, gcv.height);
+    g.setTransform(k, 0, 0, k, 0, 0);
+    g.font = font; g.textAlign = 'center'; g.textBaseline = 'middle';
+    const grad = g.createLinearGradient(x - box.w / 2, 0, x + box.w / 2, 0);
+    grad.addColorStop(0, p.a); grad.addColorStop(0.5, p.glow); grad.addColorStop(1, p.c);
+    g.fillStyle = grad; g.shadowColor = p.glow; g.shadowBlur = fs * 0.35 * k;
+    g.globalAlpha = 0.55; g.fillText(s, x, y);
+    g.shadowBlur = fs * 0.12 * k; g.globalAlpha = 0.35; g.fillText(s, x, y);
+    gcv.classList.remove('lit'); void gcv.offsetWidth; gcv.classList.add('lit');
   }
   function retarget(s, kick) {
     str = s;
@@ -133,9 +154,11 @@ function Swarm() {
     W = innerWidth; H = innerHeight;
     cv.width = W * dpr; cv.height = H * dpr;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    gcv.width = Math.round(W * 0.5); gcv.height = Math.round(H * 0.5);
   }
   return {
     mount(r) {
+      gcv = document.createElement('canvas'); gcv.className = 'face-canvas swarm-glow'; r.appendChild(gcv); gctx = gcv.getContext('2d');
       cv = document.createElement('canvas'); cv.className = 'face-canvas'; r.appendChild(cv);
       ctx = cv.getContext('2d'); resize(); colors();
     },
@@ -145,7 +168,7 @@ function Swarm() {
     },
     relayout() { resize(); if (str) retarget(str, false); },
     frame(dt, now) {
-      if (palName !== Store.get('palette')) colors();
+      if (palName !== Store.get('palette')) { colors(); if (str) retarget(str, false); }
       const k = Math.min(3, dt / 16.67), calm = Store.get('motion') === 'calm';
       ctx.globalCompositeOperation = 'destination-out';
       ctx.fillStyle = `rgba(0,0,0,${calm ? 0.6 : 0.3})`;
@@ -165,7 +188,7 @@ function Swarm() {
         const b = Math.max(0, Math.min(NB - 1, Math.floor((p.tx - box.left) / box.w * NB)));
         buckets[b].push(p);
       }
-      const sz = Math.max(1.6, baseSize() / 150);
+      const sz = Math.max(1.6, baseSize() / 150), tw = now * 0.004;
       ctx.lineCap = 'round';
       buckets.forEach((b, i) => {
         ctx.fillStyle = ctx.strokeStyle = cols[i];
@@ -174,10 +197,20 @@ function Swarm() {
         for (const p of b) {
           const sp = Math.abs(p.vx) + Math.abs(p.vy);
           if (sp > 1.5) { ctx.moveTo(p.x, p.y); ctx.lineTo(p.x - p.vx * 2, p.y - p.vy * 2); }
-          else ctx.rect(p.x - sz / 2, p.y - sz / 2, sz, sz);
+          else { const s = sz * (0.55 + 0.6 * Math.abs(Math.sin(tw + p.h * 40))); ctx.rect(p.x - s / 2, p.y - s / 2, s, s); }
         }
         ctx.fill(); ctx.stroke();
       });
+      /* a few particles catch the light each frame */
+      if (P.length) {
+        ctx.fillStyle = '#fff';
+        for (let n = 0, m = LITE() ? 2 : 7; n < m; n++) {
+          const p = P[(rnd() * P.length) | 0], s = sz * (1.5 + rnd() * 2.5);
+          ctx.globalAlpha = 0.5 + rnd() * 0.5;
+          ctx.fillRect(p.x - s, p.y - sz * 0.2, s * 2, sz * 0.4); ctx.fillRect(p.x - sz * 0.2, p.y - s, sz * 0.4, s * 2);
+        }
+        ctx.globalAlpha = 1;
+      }
       for (let i = dying.length - 1; i >= 0; i--) {
         const p = dying[i];
         p.vx *= 0.97; p.vy = p.vy * 0.97 + 0.05; p.x += p.vx * k; p.y += p.vy * k; p.life -= 0.02 * k;

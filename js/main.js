@@ -89,7 +89,21 @@
   let prev = performance.now(), perfT = 0, perfN = 0, suggested = false;
   try { suggested = !!sessionStorage.getItem('still.liteHint'); } catch (e) {}
   const bar = $('progress').firstElementChild;
+  /* one layer throwing must never freeze the clock: each runs guarded, and the first error of each is shown */
+  const failed = {};
+  function safe(name, fn) {
+    try { fn(); }
+    catch (e) {
+      if (failed[name]) return;
+      failed[name] = true;
+      console.error('[Still] ' + name + ' layer failed', e);
+      const el = $('err'); el.textContent = `${name}: ${e && e.message || e}`; el.classList.add('show');
+    }
+  }
   function loop(now) {
+    raf(loop);
+    /* high-refresh screens (120/144 Hz) would do double the work for no visible gain: cap near 60 fps */
+    if (now - prev < 13) return;
     const dt = Math.min(100, now - prev); prev = now;
     if (!suggested && !LITE() && !document.hidden) {
       perfT += dt; perfN++;
@@ -102,21 +116,20 @@
     if (d.getSeconds() !== lastSec) {
       T = parts(d);
       const first = lastSec === -1;
-      Faces.set(T, first);
+      lastSec = T.S;
+      safe('face', () => Faces.set(T, first));
       if (!first) {
-        Faces.beat();
-        if (T.M !== lastMin) onMinute(T.H !== lastHour);
+        safe('face', () => Faces.beat());
+        if (T.M !== lastMin) safe('minute', () => onMinute(T.H !== lastHour));
       }
-      lastSec = T.S; lastMin = T.M; lastHour = T.H;
-      updateMeta(T);
-      Faces.placeMeta();
+      lastMin = T.M; lastHour = T.H;
+      safe('meta', () => { updateMeta(T); Faces.placeMeta(); });
     }
     bar.style.setProperty('--p', ((d.getSeconds() + d.getMilliseconds() / 1000) / 60).toFixed(4));
-    BG.frame(dt, now);
-    Sky.frame(dt, now);
-    FX.frame(dt, now);
-    Faces.frame(dt, now, T);
-    raf(loop);
+    safe('background', () => BG.frame(dt, now));
+    safe('sky', () => Sky.frame(dt, now));
+    safe('particles', () => FX.frame(dt, now));
+    safe('face', () => Faces.frame(dt, now, T));
   }
 
   /* ---------- input ---------- */
@@ -176,7 +189,7 @@
     if (k !== ' ' && k !== 's' && k !== 'escape') Sound.ui('click');
   });
 
-  function resize() { BG.resize(); FX.resize(); Sky.resize(); Faces.relayout(); }
+  function resize() { safe('background', BG.resize); safe('particles', FX.resize); safe('sky', Sky.resize); safe('face', Faces.relayout); }
   let rz; addEventListener('resize', () => { clearTimeout(rz); rz = setTimeout(resize, 120); });
 
   /* ---------- boot ---------- */
@@ -184,12 +197,12 @@
   body.classList.toggle('no-date', !Store.get('date'));
   body.classList.toggle('lite', Store.get('lite'));
   fsState();
-  BG.resize(); FX.resize(); Sky.resize();
-  Faces.show(Store.get('face'), T, true);
+  resize();
+  safe('face', () => Faces.show(Store.get('face'), T, true));
   raf(loop);
   setTimeout(() => body.classList.remove('booting'), 50);
   setTimeout(() => { const a = Faces.anchor(); FX.ring(a.x, a.y, { v: 15, w: 2.5, decay: 0.01 }); BG.pulse(a.x, a.y, 1); }, 900);
-  document.fonts && document.fonts.ready.then(() => Faces.relayout());
+  document.fonts && document.fonts.ready.then(() => safe('face', Faces.relayout));
   if (Store.get('sound') || Store.get('ambient')) {
     setTimeout(() => { if (!Sound.running()) $('hint').classList.add('show'); }, 1800);
     setTimeout(() => $('hint').classList.remove('show'), 11000);
