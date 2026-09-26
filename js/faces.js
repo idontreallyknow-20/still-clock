@@ -128,8 +128,10 @@ function Swarm() {
     return pts;
   }
   /* the luminous core: the time's shape, blurred, on a cheap half-res canvas; the swarm streams over it */
-  function glow(s, font, fs, x, y) {
+  let glowArgs = null;
+  function glow(s, font, fs, x, y, flash = true) {
     if (!gctx) return;
+    glowArgs = [s, font, fs, x, y];
     const k = gcv.width / W, p = pal(), g = gctx;
     g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, gcv.width, gcv.height);
     g.setTransform(k, 0, 0, k, 0, 0);
@@ -139,7 +141,7 @@ function Swarm() {
     g.fillStyle = grad; g.shadowColor = p.glow; g.shadowBlur = fs * 0.35 * k;
     g.globalAlpha = 0.55; g.fillText(s, x, y);
     g.shadowBlur = fs * 0.12 * k; g.globalAlpha = 0.35; g.fillText(s, x, y);
-    gcv.classList.remove('lit'); void gcv.offsetWidth; gcv.classList.add('lit');
+    if (flash) { gcv.classList.remove('lit'); void gcv.offsetWidth; gcv.classList.add('lit'); }
   }
   function retarget(s, kick) {
     str = s;
@@ -184,7 +186,7 @@ function Swarm() {
     },
     relayout() { resize(); if (str) retarget(str, false); },
     frame(dt, now) {
-      if (palName !== palKeyOf(pal())) colors();
+      if (palName !== palKeyOf(pal())) { colors(); if (glowArgs) glow(...glowArgs, false); }
       const k = Math.min(3, dt / 16.67), calm = Store.get('motion') === 'calm';
       ctx.globalCompositeOperation = 'destination-out';
       ctx.fillStyle = `rgba(0,0,0,${calm ? 0.6 : 0.3})`;

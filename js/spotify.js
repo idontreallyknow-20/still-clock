@@ -52,13 +52,17 @@ window.Spotify = (() => {
     catch (e) { UI.toast('Spotify: ' + e.message, 4000); }
   }
 
+  let retryIn = 0, retryAt = 0;
   async function api(path, method = 'GET') {
     if (!tok) return null;
     if (Date.now() > tok.exp) {
-      try { await token({ grant_type: 'refresh_token', refresh_token: tok.refresh }); }
+      if (Date.now() < retryAt) return null;
+      try { await token({ grant_type: 'refresh_token', refresh_token: tok.refresh }); retryIn = 0; }
       catch (e) {
-        if (e.refused) { signOut(); UI.toast('Spotify signed out, connect again in settings', 3000); }
-        return null; /* offline for a moment: keep the sign-in and try again on the next poll */
+        if (e.refused) { signOut(); UI.toast('Spotify signed out, connect again in settings', 3000); return null; }
+        /* offline for a moment: keep the sign-in and try again, backing off to once a minute */
+        retryIn = Math.min(60000, (retryIn || 3000) * 2); retryAt = Date.now() + retryIn;
+        return null;
       }
     }
     const r = await fetch('https://api.spotify.com/v1' + path, { method, headers: { Authorization: 'Bearer ' + tok.access } });

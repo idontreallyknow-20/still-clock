@@ -1,6 +1,6 @@
 """Every palette reaches every layer, and the album-art palette comes and goes cleanly with the Spotify session.
 Run with the server up:  python <webapp-testing>/scripts/with_server.py --server "node serve.js" --port 8787 -- python tests/colour_sync.py"""
-import json, sys, struct, zlib
+import json, sys, struct, zlib, datetime
 from playwright.sync_api import sync_playwright
 
 URL = 'http://127.0.0.1:8787/index.html'
@@ -64,6 +64,25 @@ with sync_playwright() as p:
     check(not errs, 'no page errors while cycling palettes ' + repr(errs[:2]))
     ctx.close()
 
+    # 1b. the 2D Swarm (no WebGL) follows a colour change that keeps the palette's name (album art, the live Sky):
+    #     both the particles and the glow behind them, mid-minute, without waiting for the next tick
+    NOGL = "HTMLCanvasElement.prototype.getContext = (o => function (t, ...a) { return /webgl/.test(t) ? null : o.call(this, t, ...a); })(HTMLCanvasElement.prototype.getContext);"
+    ctx, pg, errs = page(b, NOGL, face='swarm')
+    pg.clock.install(time=datetime.datetime(2026, 9, 25, 23, 40, 3)); pg.clock.resume()
+    pg.goto(URL); pg.wait_for_timeout(3000)
+    HUE = """sel => { const c = document.querySelector(sel), g = c.getContext('2d'), d = g.getImageData(0, 0, c.width, c.height).data;
+      let r = 0, gr = 0, n = 0; for (let i = 0; i < d.length; i += 16) if (d[i + 3] > 40) { r += d[i]; gr += d[i + 1]; n++; }
+      return n ? gr / Math.max(1, r) : 0; }"""
+    GREEN = {'name': 'Album', 'live': True, 'bg': '#02040a', 't1': '#44ff66', 'a': '#00ff40', 'b': '#20ff60', 'c': '#10ff30', 't2': '#40ff80', 'glow': '#00ff50'}
+    check(not pg.evaluate("!!window.GL3D && document.getElementById('gl').classList.contains('on')"), '2D Swarm is really running without WebGL')
+    before = [pg.evaluate(HUE, '.swarm-glow'), pg.evaluate(HUE, '.face-canvas:not(.swarm-glow)')]
+    pg.evaluate("p => { window.MUSICPAL = p; StillPalette(); }", GREEN); pg.wait_for_timeout(1500)
+    after = [pg.evaluate(HUE, '.swarm-glow'), pg.evaluate(HUE, '.face-canvas:not(.swarm-glow)')]
+    check(after[0] > 2 and after[0] > before[0] * 1.5, f'2D Swarm glow turns green mid-minute (green/red {before[0]:.2f} -> {after[0]:.2f})')
+    check(after[1] > 1.6 and after[1] > before[1] * 1.5, f'2D Swarm particles turn green mid-minute (green/red {before[1]:.2f} -> {after[1]:.2f})')
+    check(pg.evaluate("new Date().getSeconds()") < 55, 'no minute tick happened during the check')
+    ctx.close()
+
     # 2. album colours: on while playing, synced everywhere, off on pause, back on resume
     ctx, pg, errs = page(b, TOKEN)
     player, calls, mode = PLAYING(), [], ['ok']
@@ -73,7 +92,7 @@ with sync_playwright() as p:
     check(r['name'] == 'Album' and r['css'] and r['gl'] and r['meta'], f'album palette applied to every layer {r}')
     player['is_playing'] = False; pg.wait_for_timeout(3600)
     r = pg.evaluate(SYNC)
-    check(r['name'] == 'Sky' and r['css'] and r['gl'], f'paused: back to the Sky palette everywhere {r}')
+    check(r['name'] == 'Sky' and r['css'] and r['gl'] and r['meta'], f'paused: back to the Sky palette everywhere {r}')
     player['is_playing'] = True; pg.wait_for_timeout(3600)
     check(pg.evaluate(SYNC)['name'] == 'Album', 'resumed: album colours return')
     pg.evaluate("Store.set('musicColors', false)"); pg.wait_for_timeout(300)
@@ -88,6 +107,10 @@ with sync_playwright() as p:
         pg.goto(URL); pg.wait_for_timeout(2500)
         st = pg.evaluate("[Spotify.connected, !!window.MUSICPAL, document.getElementById('music').classList.contains('on'), pal().name]")
         check(st[0] == want and not st[1] and not st[2], f'refresh {m}: connected={st[0]} album={st[1]} card={st[2]} palette={st[3]}')
+        if m == 'offline':
+            pg.wait_for_timeout(8000)  # ~10.5 s offline: every 3 s would be 4 refresh attempts; backing off gives 2
+            n = sum(c.startswith('TOKEN') for c in calls)
+            check(n <= 2 and pg.evaluate("Spotify.connected"), f'refresh offline: backs off ({n} attempts in ~10 s) and stays signed in')
         ctx.close()
 
     # refused while a song was already colouring everything: the colours must not stick
