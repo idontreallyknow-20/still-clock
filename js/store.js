@@ -116,4 +116,7 @@ window.LITE = () => Store.get('lite');
 /* automatic quality: main.js watches the frame time and steps this down (or back up) so the clock stays smooth.
    tier 0 is full quality; each step trims resolution and effects */
 window.QUALITY = { tier: 0, max: 3, subs: [], set(t) { t = Math.max(0, Math.min(this.max, t)); if (t === this.tier) return; this.tier = t; this.subs.forEach(f => f(t)); }, on(f) { this.subs.push(f); } };
+/* the pointer as -0.5..0.5 of the window. Measured against the live window size, never a cached one: an
+   installed-app window reports 0x0 while it opens, and dividing by that made the sky camera Infinity */
+window.normPointer = (x, y) => [Math.max(-0.5, Math.min(0.5, x / (innerWidth || 1) - 0.5)), Math.max(-0.5, Math.min(0.5, y / (innerHeight || 1) - 0.5))];
 window.MOTION = () => ({ calm: 0.35, normal: 1, wild: 2.2 })[Store.get('motion')] || 1;

@@ -24,7 +24,7 @@ body.no-gl #bg { background: radial-gradient(120% 90% at 50% 20%, color-mix(in s
   transition: opacity .8s var(--ease), transform 1s var(--ease), filter .8s var(--ease); }
 .face-root.entering { opacity: 0; transform: scale(.9); filter: blur(24px); }
 .face-root.leaving { opacity: 0; transform: scale(1.12); filter: blur(30px); pointer-events: none; }
-.face-root.face-swarm, .face-root.face-orbit { padding: 0; }
+.face-root.face-swarm, .face-root.face-orbit, .face-root.face-nova { padding: 0; }
 
 /* ---------- meta line ---------- */
 #meta { position: absolute; left: 50%; top: 70%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 14px;

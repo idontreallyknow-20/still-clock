@@ -84,7 +84,7 @@ window.FX = (() => {
 
   addEventListener('pointermove', e => {
     mouse.x = e.clientX; mouse.y = e.clientY;
-    mouse.nx = e.clientX / W - 0.5; mouse.ny = e.clientY / H - 0.5;
+    [mouse.nx, mouse.ny] = normPointer(e.clientX, e.clientY);
     if (mouse.lx !== null && Store.get('motion') !== 'calm' && !LITE()) {
       const dx = mouse.x - mouse.lx, dy = mouse.y - mouse.ly, d = Math.hypot(dx, dy);
       const n = Math.min(4, Math.floor(d / 14)), P = pal();

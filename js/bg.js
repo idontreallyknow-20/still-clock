@@ -138,8 +138,8 @@ void main(){
   }
 
   addEventListener('pointermove', e => {
-    mouseT[0] = (e.clientX / innerWidth - 0.5);
-    mouseT[1] = -(e.clientY / innerHeight - 0.5);
+    const [nx, ny] = normPointer(e.clientX, e.clientY);
+    mouseT[0] = nx; mouseT[1] = -ny;
   });
 
   return {

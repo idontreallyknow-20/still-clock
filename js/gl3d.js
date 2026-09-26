@@ -67,7 +67,7 @@ function palColors() {
   return PC;
 }
 const mouse = { nx: 0, ny: 0, x: -1e4, y: -1e4, last: -1e9 };
-addEventListener('pointermove', e => { mouse.x = e.clientX; mouse.y = e.clientY; mouse.nx = e.clientX / W - 0.5; mouse.ny = e.clientY / H - 0.5; mouse.last = performance.now(); });
+addEventListener('pointermove', e => { mouse.x = e.clientX; mouse.y = e.clientY; [mouse.nx, mouse.ny] = normPointer(e.clientX, e.clientY); mouse.last = performance.now(); });
 const wave = { t0: -99, amp: 0 };
 function pulse(strength = 1) { wave.t0 = T; wave.amp = strength; }
 const toScreen = v => { const p = v.clone().project(faceCam); return { x: (p.x + 1) / 2 * W, y: (1 - p.y) / 2 * H }; };
