@@ -66,7 +66,8 @@
     if (t.date !== lastDate) { lastDate = t.date; decode($('dtext'), t.date); }
     const info = Sky.info;
     if (info !== lastInfo) { if (info.replace(/\d/g, '') !== lastInfo.replace(/\d/g, '')) decode($('wx'), info); else { clearInterval($('wx')._t); $('wx').textContent = info; } lastInfo = info; }
-    document.title = `${t.hm}${t.ampm ? ' ' + t.ampm : ''} · Still`;
+    const ms = window.Music && Music.state();
+    document.title = `${t.hm}${t.ampm ? ' ' + t.ampm : ''} · ${ms && ms.playing ? '♪ ' + ms.title : 'Still'}`;
   }
 
   /* ---------- events ---------- */
@@ -96,7 +97,7 @@
 
   /* ---------- the alarm ---------- */
   const Alarm = (() => {
-    let ringing = false, snoozeUntil = 0, firedKey = '', timer = 0;
+    let ringing = false, snoozeUntil = 0, firedKey = '', timer = 0, viaSpotify = false;
     const el = $('alarm');
     function start() {
       if (ringing) return;
@@ -104,6 +105,10 @@
       $('alarm-time').textContent = T.hm + (T.ampm ? ' ' + T.ampm : '');
       el.querySelector('.al-k').textContent = T.H >= 4 && T.H < 12 ? 'Good morning' : T.H < 18 ? 'Alarm' : 'Good evening';
       Sound.init(); Sound.alarm(true);
+      /* wake with Spotify: if it starts playing, the song is the alarm and the bells stand down;
+         with no device to play on, the bells carry on as usual */
+      viaSpotify = false;
+      if (Store.get('alarmSpotify') && Spotify.connected) Spotify.play(true, true).then(ok => { if (ok && ringing) { viaSpotify = true; Sound.alarm(false); } });
       const beat = () => { const a = Faces.anchor(); BG.pulse(a.x, a.y, 1); BG.surge(); gl3d() && GL3D.pulse(1.2); };
       beat(); timer = setInterval(beat, 4200);
       try { if (window.Notification && Notification.permission === 'granted') new Notification('Still · alarm', { body: $('alarm-time').textContent, requireInteraction: true }); } catch (e) {}
@@ -113,6 +118,8 @@
       if (!ringing) return;
       ringing = false; clearInterval(timer); body.classList.remove('alarm-on'); el.setAttribute('aria-hidden', 'true');
       Sound.alarm(false);
+      if (viaSpotify && snooze) Spotify.play(false, true);
+      viaSpotify = false;
       snoozeUntil = snooze ? Date.now() + 9 * 6e4 : 0;
       UI.toast(snooze ? 'Snoozed for 9 minutes' : 'Alarm off', 2200);
       applyDim();
@@ -261,6 +268,9 @@
       UI.toast('Brightness ' + Math.round(Store.get('brightness') * 100) + '%');
     }
     else if (k === 'f') UI.fullscreen();
+    else if (k === 'j') Music.key('prev');
+    else if (k === 'k') Music.key('toggle');
+    else if (k === 'l') Music.key('next');
     else if (k === 'm') UI.toast(Sound.toggleMute() ? 'Muted' : 'Sound on');
     else if (k >= '1' && k <= '5') { Store.set('face', FACES[+k - 1][0]); UI.toast(FACES[+k - 1][1]); }
     else if (k === 'p') { cycle('palette', Object.keys(PALETTES)); UI.toast(pal().name); }
@@ -285,6 +295,7 @@
   safe('face', () => Faces.show(Store.get('face'), T, true));
   raf(loop);
   safe('music', () => Spotify.init());
+  safe('music', () => Music.init());
   safe('listen', () => Listen.init());
   setTimeout(() => body.classList.remove('booting'), 50);
   setTimeout(() => { const a = Faces.anchor(); BG.pulse(a.x, a.y, 1); }, 900);

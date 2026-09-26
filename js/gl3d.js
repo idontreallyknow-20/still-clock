@@ -450,7 +450,10 @@ void main() { vec2 d = gl_PointCoord - .5; float r2 = dot(d, d); float a = exp(-
   const minArc = arc(F, 0.8, 0.012, { base: 0.06, tail: 1.5, headA: 1.4 });
   const secArc = arc(F, 0.64, 0.008, { base: 0.05, tail: 2.2, headA: 1.2 });
   const sats = [0, 1, 2].map(() => arc(F, 0.64, 0.007, { base: 0, tail: 0.7, headA: 1 }));
-  [hourArc, minArc, secArc, ...sats].forEach(m => unit.add(m));
+  /* the song ring: between the numerals and the sky dial, it fills as the Spotify song plays (music.js) */
+  const songArc = arc(F, 1.235, 0.009, { base: 0, fillA: 0, tail: 0.55, headA: 0 });
+  let songOn = 0, songP = 0, songPlay = 0;
+  [hourArc, minArc, secArc, ...sats, songArc].forEach(m => unit.add(m));
   /* 60 minute ticks */
   const ticks = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ ...ADD, toneMapped: false }), 60);
   const dummy = new THREE.Object3D();
@@ -641,6 +644,24 @@ void main() { float r = length(vUv), a = atan(vUv.y, vUv.x);
       u.uHead.value = (T * 0.12 * (i + 1) * (0.5 + m * 0.5) + i * 2.1) % TAU;
       u.uCH.value.copy([P.a, P.b, P.c][i]).multiplyScalar(1.6); u.uCA.value.copy(P.t2); u.uCB.value.copy(P.t2);
     });
+    const ms = window.Music && Music.state(), sk = Math.min(1, dt / 700);
+    songOn += ((ms ? 1 : 0) - songOn) * sk;
+    if (ms) {
+      /* a new song winds the ring back to the start instead of jumping */
+      const u = songArc.userData;
+      if (ms.id !== u.id) { u.rewind = !!u.id; u.id = ms.id; }
+      if (u.rewind) { songP += (ms.p - songP) * Math.min(1, dt / 260); if (Math.abs(ms.p - songP) < 0.002) u.rewind = false; }
+      else songP = ms.p;
+    }
+    songPlay += ((ms && ms.playing ? 1 : 0) - songPlay) * sk;
+    const so = songArc.material.uniforms;
+    so.uFill.value = so.uHead.value = songP * TAU;
+    so.uBase.value = 0.07 * songOn;
+    so.uFillA.value = songOn * (0.3 + 0.55 * songPlay);
+    so.uHeadA.value = songOn * (0.35 + 0.25 * Math.sin(T * 2.2) * (1 - songPlay) + 1.1 * songPlay);
+    so.uGlow.value = glow;
+    so.uCA.value.copy(P.a); so.uCB.value.copy(P.c); so.uCH.value.copy(P.t1).lerp(P.glow, 0.4).multiplyScalar(1.6);
+    songArc.visible = songOn > 0.003;
     const minNow = Math.floor(mi);
     if (ticks.userData.min !== minNow || ticks.userData.pk !== palKey) {
       ticks.userData.min = minNow; ticks.userData.pk = palKey;

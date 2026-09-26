@@ -1,7 +1,9 @@
 /* Still v3 — every sound is synthesized live with WebAudio; no files */
 window.Sound = (() => {
-  let ctx = null, master, comp, verbIn, analyser, data, noiseBuf, muted = false;
+  let ctx = null, master, comp, verbIn, analyser, data, noiseBuf, muted = false, ducked = false;
   const curve = v => v * v;
+  /* while a Spotify song plays (music.js) Still's own sound steps back under it */
+  const gainNow = () => muted ? 0 : curve(Store.get('volume')) * (ducked ? 0.18 : 1);
   const live = () => ctx && ctx.state === 'running';
   const fx = () => live() && Store.get('sound');
   const R = Math.random;
@@ -12,7 +14,7 @@ window.Sound = (() => {
     if (!AC) return;
     ctx = new AC();
     master = ctx.createGain();
-    master.gain.value = curve(Store.get('volume'));
+    master.gain.value = gainNow();
     comp = ctx.createDynamicsCompressor();
     comp.threshold.value = -16; comp.ratio.value = 4; comp.attack.value = 0.003; comp.release.value = 0.3;
     master.connect(comp); comp.connect(ctx.destination);
@@ -164,7 +166,7 @@ window.Sound = (() => {
   /* called every minute with the new time: rings what the chosen interval allows */
   function chimeAt(H, M) {
     const every = Store.get('chimeEvery');
-    if (!live() || every === 'off') return;
+    if (!live() || every === 'off' || ducked) return;
     const n = +every;
     if (M === 0) {
       const end = phrases([2, 3, 4, 5], 0), strikes = H % 12 || 12;
@@ -309,7 +311,7 @@ window.Sound = (() => {
 
   Store.on((k, v) => {
     if (!ctx) return;
-    if (k === 'volume') master.gain.setTargetAtTime(muted ? 0 : curve(v), ctx.currentTime, 0.05);
+    if (k === 'volume') master.gain.setTargetAtTime(gainNow(), ctx.currentTime, 0.05);
     if (k === 'ambient') v ? pad.start() : pad.stop();
     if (k === 'chimeEvery') preview(v);
   });
@@ -317,9 +319,14 @@ window.Sound = (() => {
   return {
     init, ui, flap, pluck, shimmer, chimeAt, preview, surge, boom, weather, thunder, alarm: alarmRing,
     running: live,
+    duck(on) {
+      if (on === ducked) return;
+      ducked = on;
+      if (ctx) master.gain.setTargetAtTime(gainNow(), ctx.currentTime, 0.6);
+    },
     toggleMute() {
       muted = !muted;
-      if (ctx) master.gain.setTargetAtTime(muted ? 0 : curve(Store.get('volume')), ctx.currentTime, 0.08);
+      if (ctx) master.gain.setTargetAtTime(gainNow(), ctx.currentTime, 0.08);
       return muted;
     },
     level() {
