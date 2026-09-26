@@ -7,11 +7,12 @@ window.Spotify = (() => {
   /* Spotify only accepts http redirects on 127.0.0.1, so the address is always the served index.html */
   const redirect = () => location.origin + location.pathname.replace(/[^/]*$/, '') + 'index.html';
   const $ = id => document.getElementById(id);
-  let tok = null, now = null, lastTrack = '', pollT = 0, rowEls = null;
+  let tok = null, now = null, lastTrack = '', pollT = 0, rowEls = null, retryIn = 0, retryAt = 0;
   try { tok = JSON.parse(localStorage.getItem(KEY)); } catch (e) {}
 
   function save(t) {
     tok = t;
+    retryIn = retryAt = 0; /* a new or ended session never inherits an old offline backoff */
     try { t ? localStorage.setItem(KEY, JSON.stringify(t)) : localStorage.removeItem(KEY); } catch (e) {}
     renderRow();
   }
@@ -52,7 +53,6 @@ window.Spotify = (() => {
     catch (e) { UI.toast('Spotify: ' + e.message, 4000); }
   }
 
-  let retryIn = 0, retryAt = 0;
   async function api(path, method = 'GET') {
     if (!tok) return null;
     if (Date.now() > tok.exp) {
