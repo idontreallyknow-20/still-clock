@@ -13,61 +13,12 @@ window.Sky = (() => {
   const css = (c, a = 1) => `rgba(${c.map(v => Math.round(clamp(v, 0, 1) * 255)).join(',')},${a})`;
   let W = 0, H = 0, focal = 1, hy = 0;
 
-  /* ================= where are we? ================= */
-  const TZ = {
-    'America/New_York': [40.7, -74], 'America/Chicago': [41.9, -87.6], 'America/Denver': [39.7, -105], 'America/Los_Angeles': [34.05, -118.2],
-    'America/Phoenix': [33.4, -112], 'America/Toronto': [43.7, -79.4], 'America/Vancouver': [49.3, -123.1], 'America/Mexico_City': [19.4, -99.1],
-    'America/Sao_Paulo': [-23.5, -46.6], 'America/Argentina/Buenos_Aires': [-34.6, -58.4], 'Europe/London': [51.5, -0.1], 'Europe/Paris': [48.9, 2.35],
-    'Europe/Berlin': [52.5, 13.4], 'Europe/Madrid': [40.4, -3.7], 'Europe/Rome': [41.9, 12.5], 'Europe/Moscow': [55.75, 37.6], 'Asia/Tokyo': [35.7, 139.7],
-    'Asia/Shanghai': [31.2, 121.5], 'Asia/Kolkata': [28.6, 77.2], 'Asia/Dubai': [25.2, 55.3], 'Asia/Singapore': [1.35, 103.8], 'Asia/Seoul': [37.6, 127],
-    'Australia/Sydney': [-33.9, 151.2], 'Australia/Melbourne': [-37.8, 145], 'Pacific/Auckland': [-36.85, 174.8], 'Africa/Johannesburg': [-26.2, 28],
-  };
-  const validLoc = l => l && isFinite(l.lat) && isFinite(l.lon) && Math.abs(l.lat) <= 90 && Math.abs(l.lon) <= 180;
-  function guessLoc() {
-    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || '';
-    if (TZ[tz]) return { lat: TZ[tz][0], lon: TZ[tz][1], guess: true };
-    return { lat: /^(Australia|Pacific\/Auck|America\/(Sao|Argentina|Santiago))/.test(tz) ? -30 : 40, lon: -new Date().getTimezoneOffset() / 4, guess: true };
-  }
-  let loc = (() => {
-    try { const l = JSON.parse(localStorage.getItem('still.loc')); if (validLoc(l)) return { lat: +l.lat, lon: +l.lon }; } catch (e) {}
-    return guessLoc();
-  })();
-  function locate() {
-    if (!loc.guess || !navigator.geolocation) return;
-    navigator.geolocation.getCurrentPosition(p => {
-      const l = { lat: p.coords.latitude, lon: p.coords.longitude };
-      if (!validLoc(l)) return;
-      loc = l;
-      try { localStorage.setItem('still.loc', JSON.stringify(loc)); } catch (e) {}
-      fetchWeather();
-    }, () => {}, { maximumAge: 36e5, timeout: 15000 });
-  }
+  /* ================= where are we? Richmond Hill, always ================= */
+  const loc = Astro.LOC;
+  function locate() {}
 
-  /* ================= astronomy ================= */
-  const jd = ms => ms / 86400000 + 2440587.5;
-  const lstDeg = ms => ((280.46061837 + 360.98564736629 * (jd(ms) - 2451545) + loc.lon) % 360 + 360) % 360;
-  function sunEq(ms) {
-    const n = jd(ms) - 2451545, g = (357.528 + 0.9856003 * n) * D2R;
-    const lam = (280.46 + 0.9856474 * n + 1.915 * Math.sin(g) + 0.02 * Math.sin(2 * g)) * D2R, e = 23.439 * D2R;
-    return { ra: Math.atan2(Math.cos(e) * Math.sin(lam), Math.cos(lam)) * R2D, dec: Math.asin(Math.sin(e) * Math.sin(lam)) * R2D, lon: lam * R2D };
-  }
-  function moonEq(ms) {
-    const d = jd(ms) - 2451545;
-    const M = (134.963 + 13.064993 * d) * D2R, F = (93.272 + 13.22935 * d) * D2R, Ms = (357.529 + 0.98560028 * d) * D2R, Dm = (297.85 + 12.190749 * d) * D2R;
-    const lam = (218.316 + 13.176396 * d + 6.289 * Math.sin(M) + 1.274 * Math.sin(2 * Dm - M) + 0.658 * Math.sin(2 * Dm) - 0.186 * Math.sin(Ms)) * D2R;
-    const bet = 5.128 * Math.sin(F) * D2R, e = 23.439 * D2R;
-    return {
-      ra: Math.atan2(Math.sin(lam) * Math.cos(e) - Math.tan(bet) * Math.sin(e), Math.cos(lam)) * R2D,
-      dec: Math.asin(Math.sin(bet) * Math.cos(e) + Math.cos(bet) * Math.sin(e) * Math.sin(lam)) * R2D, lon: lam * R2D,
-    };
-  }
-  /* equatorial -> [alt, az] in radians, az measured from north through east */
-  function altaz(ra, dec, lst) {
-    const Hh = (lst - ra) * D2R, d = dec * D2R, p = loc.lat * D2R;
-    const alt = Math.asin(Math.sin(p) * Math.sin(d) + Math.cos(p) * Math.cos(d) * Math.cos(Hh));
-    const az = Math.atan2(-Math.sin(Hh) * Math.cos(d), Math.cos(p) * Math.sin(d) - Math.sin(p) * Math.cos(d) * Math.cos(Hh));
-    return [alt, az];
-  }
+  /* ================= astronomy (js/astro.js) ================= */
+  const lstDeg = Astro.lst, sunEq = Astro.sun, moonEq = Astro.moon, altaz = Astro.altaz;
 
   /* ================= camera ================= */
   const cam = { yaw: Math.PI, pitch: 20 * D2R, fov: 72 * D2R };
@@ -206,33 +157,44 @@ window.Sky = (() => {
   }
 
   /* ================= mountains: periodic ridges around the full horizon ================= */
+  const RN = 8192;
   const LAYERS = [0, 1, 2, 3].map(i => {
     const terms = [];
     for (let k = 0; k < 14; k++) {
       const f = Math.round((2 + i * 2) * Math.pow(1.7, k * 0.6)) + k;
       terms.push([f, (1 / Math.pow(1.45, k)) * (0.6 + R() * 0.6), R() * TAU, R() < 0.5]);
     }
-    return { i, terms, base: [-0.035, 0.0, 0.045, 0.1][i], amp: [0.11, 0.085, 0.07, 0.05][i], par: [4, 10, 22, 44][i] };
+    /* the ridge is 14 sines per sample and was evaluated ~1600 times a frame: bake it once into a table */
+    const lut = new Float32Array(RN + 1);
+    for (let j = 0; j <= RN; j++) {
+      const az = j / RN * TAU;
+      let v = 0, n = 0;
+      for (const [f, a, ph, sharp] of terms) { const s = Math.sin(f * az + ph); v += (sharp ? 1 - Math.abs(s) * 2 : s) * a; n += a; }
+      lut[j] = v / n;
+    }
+    return { i, lut, base: [-0.035, 0.0, 0.045, 0.1][i], amp: [0.11, 0.085, 0.07, 0.05][i], par: [4, 10, 22, 44][i] };
   });
   function ridge(L, az) {
-    let v = 0, n = 0;
-    for (const [f, a, ph, sharp] of L.terms) { const s = Math.sin(f * az + ph); v += (sharp ? 1 - Math.abs(s) * 2 : s) * a; n += a; }
-    return v / n;
+    let u = az / TAU; u = (u - Math.floor(u)) * RN;
+    const j = u | 0, f = u - j;
+    return L.lut[j] + (L.lut[j + 1] - L.lut[j]) * f;
   }
   const villages = Array.from({ length: 70 }, () => ({ az: R() * TAU, dy: 0.2 + R() * 0.8, ph: R() * TAU, warm: R() < 0.85 }));
   const hash = x => { const s = Math.sin(x * 127.1) * 43758.5453; return s - Math.floor(s); };
 
   /* ================= weather ================= */
+  /* wdir: where the wind blows FROM, degrees (west wind is the usual over Richmond Hill); gust 0..1 */
   const PRESET = {
-    clear: { cloud: 0.06, rain: 0, snow: 0, storm: 0, fog: 0, wind: 0.15, label: 'clear' },
-    rain: { cloud: 0.85, rain: 0.7, snow: 0, storm: 0, fog: 0.25, wind: 0.3, label: 'rain' },
-    snow: { cloud: 0.75, rain: 0, snow: 0.85, storm: 0, fog: 0.2, wind: 0.15, label: 'snow' },
-    storm: { cloud: 1, rain: 1, snow: 0, storm: 1, fog: 0.3, wind: 0.75, label: 'thunderstorm' },
+    clear: { cloud: 0.06, rain: 0, snow: 0, storm: 0, fog: 0, wind: 0.15, gust: 0.1, wdir: 270, label: 'clear' },
+    rain: { cloud: 0.85, rain: 0.7, snow: 0, storm: 0, fog: 0.25, wind: 0.3, gust: 0.35, wdir: 240, label: 'rain' },
+    snow: { cloud: 0.75, rain: 0, snow: 0.85, storm: 0, fog: 0.2, wind: 0.15, gust: 0.25, wdir: 300, label: 'snow' },
+    blizzard: { cloud: 1, rain: 0, snow: 1, storm: 0, fog: 0.65, wind: 1, gust: 1, wdir: 320, label: 'blizzard' },
+    storm: { cloud: 1, rain: 1, snow: 0, storm: 1, fog: 0.3, wind: 0.75, gust: 0.8, wdir: 230, label: 'thunderstorm' },
+    fog: { cloud: 0.5, rain: 0, snow: 0, storm: 0, fog: 0.95, wind: 0.05, gust: 0, wdir: 270, label: 'fog' },
   };
-  let target = { ...PRESET.clear }, wx = { ...PRESET.clear }, live = null, lastFetch = 0;
-  const useF = /US|LR|MM/.test(Intl.NumberFormat().resolvedOptions().locale || navigator.language || '');
+  let target = { ...PRESET.clear }, wx = { ...PRESET.clear }, live = null, lastFetch = 0, snowCover = 0, frozen = 0;
   function fromCode(c, cc, wind) {
-    const o = { cloud: Math.min(1, (+cc || 0) / 100), rain: 0, snow: 0, storm: 0, fog: 0, wind: Math.min(1, (+wind || 0) / 45), label: 'clear' };
+    const o = { cloud: Math.min(1, (+cc || 0) / 100), rain: 0, snow: 0, storm: 0, fog: 0, wind: Math.min(1, (+wind || 0) / 45), gust: 0, wdir: 270, label: 'clear' };
     if (c === 1) o.label = 'mostly clear'; else if (c === 2) o.label = 'partly cloudy'; else if (c === 3) o.label = 'overcast';
     else if (c === 45 || c === 48) { o.fog = 0.85; o.label = 'fog'; }
     else if (c >= 51 && c <= 57) { o.rain = 0.25; o.fog = 0.2; o.label = 'drizzle'; }
@@ -247,11 +209,26 @@ window.Sky = (() => {
     if (Store.get('weather') !== 'live') return;
     lastFetch = Date.now();
     try {
-      const u = `https://api.open-meteo.com/v1/forecast?latitude=${loc.lat.toFixed(2)}&longitude=${loc.lon.toFixed(2)}&current=temperature_2m,weather_code,cloud_cover,wind_speed_10m${useF ? '&temperature_unit=fahrenheit' : ''}`;
-      const j = await (await fetch(u)).json(), c = j.current;
-      live = { ...fromCode(+c.weather_code, c.cloud_cover, c.wind_speed_10m), temp: isFinite(c.temperature_2m) ? Math.round(c.temperature_2m) : undefined };
+      const u = `https://api.open-meteo.com/v1/forecast?latitude=${loc.lat}&longitude=${loc.lon}&timezone=America%2FToronto&forecast_days=1`
+        + '&current=temperature_2m,apparent_temperature,weather_code,cloud_cover,wind_speed_10m,wind_direction_10m,wind_gusts_10m'
+        + '&daily=temperature_2m_max,temperature_2m_min';
+      const j = await (await fetch(u)).json(), c = j.current, d = j.daily || {};
+      const num = v => isFinite(v) && v !== null ? Math.round(v) : undefined;
+      live = {
+        ...fromCode(+c.weather_code, c.cloud_cover, c.wind_speed_10m),
+        wdir: isFinite(c.wind_direction_10m) ? +c.wind_direction_10m : 270,
+        gust: Math.min(1, Math.max(0, ((+c.wind_gusts_10m || 0) - (+c.wind_speed_10m || 0)) / 30)),
+        temp: num(c.temperature_2m), feels: num(c.apparent_temperature),
+        hi: num(d.temperature_2m_max && d.temperature_2m_max[0]), lo: num(d.temperature_2m_min && d.temperature_2m_min[0]),
+      };
       if (Store.get('weather') === 'live') target = live;
     } catch (e) { live = null; }
+    /* snow on the ground, if any: a separate call so a bad field can never break the main one */
+    try {
+      const j = await (await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${loc.lat}&longitude=${loc.lon}&hourly=snow_depth&forecast_hours=1&timezone=America%2FToronto`)).json();
+      const sd = j.hourly && j.hourly.snow_depth && j.hourly.snow_depth[0];
+      if (live && isFinite(sd)) { live.ground = Math.min(1, sd / 0.1); snowCover = Math.max(snowCover, live.ground); }
+    } catch (e) {}
   }
   function setWeather(mode) {
     if (mode === 'live') { target = live || { ...PRESET.clear, label: '' }; if (Date.now() - lastFetch > 6e4) fetchWeather(); }
@@ -302,7 +279,7 @@ window.Sky = (() => {
   }
 
   /* ================= state shared with others ================= */
-  const S = { dark: 1, sunAlt: -30, moonAlt: 0, illum: 0.5, info: '' };
+  const S = { dark: 1, sunAlt: -30, moonAlt: 0, illum: 0.5, info: '' }, G = { ready: false };
   let tintTimer = 0, satellite = null, nextSat = performance.now() + 20000;
   const mouse = FX.mouse;
   let yawT = Math.PI, pitchT = 20 * D2R;
@@ -339,8 +316,38 @@ window.Sky = (() => {
         ctx.fillRect(glint.x - w * n * 0.5 + off, y, w * n, 1.2 + d);
       }
     }
+    /* raindrops ringing the water: each ring is a pure function of time, so there is nothing to track */
+    const ringN = Math.round(wx.rain * (1 - frozen) * (LITE() ? 28 : 70));
+    if (ringN > 0) {
+      ctx.globalCompositeOperation = 'lighter'; ctx.lineWidth = 0.8;
+      ctx.strokeStyle = css(mixA(horC, [1, 1, 1], 0.35));
+      const t = now / 900;
+      for (let i = 0; i < ringN; i++) {
+        const cyc = t + hash(i * 3.7), n = Math.floor(cyc), u = cyc - n;
+        const d = Math.pow(hash(i * 7.3 + n * 1.3), 0.7), y = ly + 3 + d * (H - ly - 3), x = hash(i * 5.1 + n * 2.9) * W;
+        const r = (2 + d * 26) * u;
+        ctx.globalAlpha = (1 - u) * (0.12 + d * 0.3);
+        ctx.beginPath(); ctx.ellipse(x, y, r, r * (0.18 + d * 0.12), 0, 0, TAU); ctx.stroke();
+      }
+    }
+    /* ice: a pale sheen, frost at the shore and long pressure cracks */
+    if (frozen > 0.02) {
+      ctx.globalCompositeOperation = 'source-over';
+      const ice = mixA(mixA(horC, [0.78, 0.86, 0.95], 0.45), [0, 0, 0], S.dark * 0.35);
+      const ig = ctx.createLinearGradient(0, ly, 0, H);
+      ig.addColorStop(0, css(ice, 0.55 * frozen)); ig.addColorStop(0.25, css(ice, 0.28 * frozen)); ig.addColorStop(1, css(ice, 0.4 * frozen));
+      ctx.globalAlpha = 1; ctx.fillStyle = ig; ctx.fillRect(0, ly, W, H - ly);
+      ctx.strokeStyle = css(mixA(ice, [1, 1, 1], 0.5), 0.22 * frozen); ctx.lineWidth = 0.7;
+      ctx.beginPath();
+      for (let i = 0; i < 18; i++) {
+        let x = hash(i * 9.1) * W, y = ly + 4 + hash(i * 4.7) * (H - ly) * 0.9;
+        ctx.moveTo(x, y);
+        for (let s = 0; s < 6; s++) { x += (hash(i * 13 + s) - 0.3) * 90; y += (hash(i * 17 + s) - 0.5) * 8; ctx.lineTo(x, y); }
+      }
+      ctx.stroke();
+    }
     /* ripples drifting toward the shore */
-    ctx.globalAlpha = 1;
+    ctx.globalAlpha = 1 - frozen * 0.85;
     for (let i = 0; i < 26; i++) {
       const y = ly + Math.pow((i * 0.618 + now * 0.00003 * (1 + wx.wind * 4)) % 1, 1.6) * (H - ly), d = (y - ly) / (H - ly);
       const x = hash(i * 13.1) * W, w = 30 + d * 180;
@@ -356,7 +363,7 @@ window.Sky = (() => {
   let BGsky = { zen: [0, 0, 0], hor: [0, 0, 0] };
 
   function resize() {
-    const dpr = Math.min(devicePixelRatio || 1, LITE() ? 1 : 2);
+    const dpr = Math.min(devicePixelRatio || 1, LITE() ? 1 : [2, 1.5, 1, 1][QUALITY.tier]);
     W = innerWidth; H = innerHeight;
     cv.width = W * dpr; cv.height = H * dpr;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -425,6 +432,22 @@ window.Sky = (() => {
           } else ctx.fillRect(s.x - r / 2, s.y - r / 2, r, r);
         }
       });
+      /* the real planets, where they actually are tonight: steady (planets do not twinkle) and labelled */
+      ctx.font = '500 8px "JetBrains Mono", Consolas, monospace'; ctx.textAlign = 'left';
+      for (const pl of Astro.planets(skyMs)) {
+        const [alt, az] = altaz(pl.ra, pl.dec, lst);
+        if (alt < -0.01) continue;
+        project(alt, az); if (P[2] < 0) continue;
+        const a = vis * sstep(-0.01, 0.12, alt), g = 10 + (1.5 - pl.mag) * 3.2;
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.globalAlpha = a; ctx.drawImage(glowS[1], P[0] - g / 2, P[1] - g / 2, g, g);
+        ctx.fillStyle = css(pl.col); ctx.beginPath(); ctx.arc(P[0], P[1], Math.max(1.1, 1.9 - pl.mag * 0.25), 0, TAU); ctx.fill();
+        if (Store.get('lines')) {
+          ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = a * 0.5;
+          ctx.fillStyle = css(pl.col); ctx.fillText(pl.name.toUpperCase(), P[0] + 7, P[1] - 6);
+        }
+      }
+      ctx.textAlign = 'center';
       /* constellation lines and names */
       if (Store.get('lines') && vis > 0.15) {
         ctx.globalCompositeOperation = 'source-over';
@@ -456,21 +479,26 @@ window.Sky = (() => {
     /* a window can report 0x0 while it is still opening; wait until it has a real size */
     if (!W || !H || W !== innerWidth || H !== innerHeight) { if (!innerWidth || !innerHeight) return; resize(); }
     /* self-repair: one bad number (a broken saved location, a clock jump) would otherwise poison the camera forever */
-    if (!validLoc(loc)) loc = guessLoc();
     if (!isFinite(skyMs)) skyMs = Date.now();
     if (!isFinite(cam.yaw) || !isFinite(cam.pitch)) { cam.yaw = Math.PI; cam.pitch = 20 * D2R; }
     const lite = LITE();
     if (lite) { acc += dt; skipF = !skipF; if (skipF) { tickTime(); return; } dt = acc; acc = 0; }
     tickTime();
     const k = Math.min(3, dt / 16.67);
-    for (const key of ['cloud', 'rain', 'snow', 'storm', 'fog', 'wind']) { wx[key] += ((+target[key] || 0) - wx[key]) * Math.min(1, dt / 2500); if (!isFinite(wx[key])) wx[key] = 0; }
+    for (const key of ['cloud', 'rain', 'snow', 'storm', 'fog', 'wind', 'gust']) { wx[key] += ((+target[key] || 0) - wx[key]) * Math.min(1, dt / 2500); if (!isFinite(wx[key])) wx[key] = 0; }
+    wx.wdir += wrap(((+target.wdir || 270) - wx.wdir) * D2R) * R2D * Math.min(1, dt / 4000);
+    if (!isFinite(wx.wdir)) wx.wdir = 270;
     if (Store.get('weather') === 'live' && Date.now() - lastFetch > 15 * 6e4) fetchWeather();
+    /* snow piles up while it falls (about three minutes to a full cover) and melts slowly once it stops above freezing */
+    const cold = live && live.temp !== undefined && Store.get('weather') === 'live' ? live.temp <= 0 : wx.snow > 0.3;
+    if (wx.snow > 0.05) snowCover = Math.min(1, snowCover + dt / 180000 * wx.snow * 1.5);
+    else snowCover = Math.max(live && live.ground ? live.ground : 0, snowCover - dt / (cold ? 1.2e6 : 240000));
+    frozen += ((cold || wx.snow > 0.5 ? 1 : 0) - frozen) * Math.min(1, dt / 20000);
 
-    /* astronomy for this instant */
+    /* astronomy for this instant: topocentric moon (parallax and refraction), true phase */
     const lst = lstDeg(skyMs), sun = sunEq(skyMs), moon = moonEq(skyMs);
-    const [sAlt, sAz] = altaz(sun.ra, sun.dec, lst), [mAlt, mAz] = altaz(moon.ra, moon.dec, lst);
-    const elong = Math.acos(clamp(Math.sin(sun.dec * D2R) * Math.sin(moon.dec * D2R) + Math.cos(sun.dec * D2R) * Math.cos(moon.dec * D2R) * Math.cos((sun.ra - moon.ra) * D2R), -1, 1));
-    const illum = (1 - Math.cos(elong)) / 2, waxing = ((moon.lon - sun.lon) % 360 + 360) % 360 < 180;
+    const [sAlt, sAz] = altaz(sun.ra, sun.dec, lst), [mAlt, mAz] = altaz(moon.ra, moon.dec, lst, moon.par);
+    const ph = Astro.phase(sun, moon), illum = ph.illum, waxing = ph.waxing;
     const sunDeg = sAlt * R2D, dark = sstep(-2, -14, sunDeg), cloud = wx.cloud;
     S.dark = dark; S.sunAlt = sunDeg; S.moonAlt = mAlt * R2D; S.illum = illum; S.waxing = waxing;
 
@@ -511,7 +539,7 @@ window.Sky = (() => {
       if (P[2] > 0) { glowP = [(P[0] - W / 2) / H, (H / 2 - P[1]) / H]; glowC = [0.45, 0.55, 0.8]; glowA = illum * 0.35 * (1 - cloud * 0.5); }
     }
     BGsky = { zen, hor };
-    BG.sky({ zen, hor, sunP: glowP, sunC: glowC, sunA: glowA, horY: 1 - hy / H, aur: (0.1 + 0.9 * dark) * (1 - cloud * (Store.get('motion') === 'wild' ? 0.35 : 0.75)) });
+    BG.sky({ zen, hor, sunP: glowP, sunC: glowC, sunA: glowA, horY: 1 - hy / H, yaw: cam.yaw, aur: (0.1 + 0.9 * dark) * (1 - cloud * (Store.get('motion') === 'wild' ? 0.35 : 0.75)) });
 
     ctx.clearRect(0, 0, W, H);
     const vis = dark * (1 - cloud * 0.92);
@@ -520,7 +548,7 @@ window.Sky = (() => {
        own layer about ten times a second, and slide that layer with the camera in between */
     starAge += dt;
     if (vis > 0.01) {
-      let ox = 0, oy = 0, fresh = starAge > 100 || starW !== cv.width || starH !== cv.height || Math.abs(starVis - vis) > 0.04;
+      let ox = 0, oy = 0, fresh = starAge > 100 * (1 + (window.QUALITY ? QUALITY.tier : 0)) || starW !== cv.width || starH !== cv.height || Math.abs(starVis - vis) > 0.04;
       if (!fresh) {
         project(starCam.pitch, starCam.yaw);
         ox = P[0] - W / 2; oy = P[1] - H / 2;
@@ -685,7 +713,8 @@ window.Sky = (() => {
     ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1;
     const far = mixA(hor, zen, 0.35);
     const near = mixA(hex('#14231c'), mixA(zen, [0, 0, 0], 0.45), dark).map(v => v + flash * 0.08);
-    const step = lite ? 10 : 5, snowCap = wx.snow, lakeY = hy + H * 0.1;
+    const step = lite ? 10 : 5, snowCap = Math.max(wx.snow * 0.6, snowCover), lakeY = hy + H * 0.1;
+    const snowCol = mixA([0.86, 0.9, 1], light, 0.35).map(v => v * (0.28 + 0.72 * (1 - dark)) + 0.06 + flash * 0.5);
     const ridges = [];
     for (const L of LAYERS) {
       const t = (L.i + 1) / 4, col = mixA(far, near, 0.3 + t * 0.6);
@@ -710,7 +739,14 @@ window.Sky = (() => {
         ctx.beginPath();
         for (let j = 0; j < pts.length; j += 2) j ? ctx.lineTo(pts[j], pts[j + 1]) : ctx.moveTo(pts[j], pts[j + 1]);
         ctx.strokeStyle = css(light, 0.35 * (1 - t * 0.5)); ctx.lineWidth = 1; ctx.stroke();
-        if (snowCap > 0.05) { ctx.strokeStyle = `rgba(235,242,255,${snowCap * 0.22 * (1 - t * 0.6)})`; ctx.lineWidth = 1.5; ctx.stroke(); }
+        if (snowCap > 0.03) {
+          /* snow loads the ridges: a bright crest line, then a mantle that thickens as it piles up */
+          ctx.strokeStyle = css(snowCol, snowCap * 0.55 * (1 - t * 0.4)); ctx.lineWidth = 1.2 + snowCap * 1.4; ctx.stroke();
+          ctx.lineTo(W + 10, H); ctx.lineTo(-10, H); ctx.closePath();
+          const sg = ctx.createLinearGradient(0, base - amp * 1.4, 0, base + amp * (0.2 + snowCap * 0.6));
+          sg.addColorStop(0, css(snowCol, snowCap * 0.5 * (1 - t * 0.3))); sg.addColorStop(1, css(snowCol, 0));
+          ctx.fillStyle = sg; ctx.fill();
+        }
       }
       /* village lights on the middle slopes, doubled in the water */
       if (L.i === 2 && dark > 0.2) {
@@ -731,6 +767,7 @@ window.Sky = (() => {
       /* tall pines along the foreground shore */
       if (L.i === 3) {
         ctx.fillStyle = css(mixA(col, [0, 0, 0], 0.25));
+        const trees = [];
         ctx.beginPath();
         for (let j = 0; j < pts.length; j += 2) {
           const x = pts[j], az = cam.yaw + Math.atan((x - px - W / 2) / focal), hsh = hash(Math.round(az * R2D * 2));
@@ -741,8 +778,25 @@ window.Sky = (() => {
             const ty = y - th * tier * 0.28, tww = tw * (1 - tier * 0.22);
             ctx.moveTo(x - tww, ty); ctx.lineTo(x, ty - th * 0.55); ctx.lineTo(x + tww, ty);
           }
+          if (snowCap > 0.03) trees.push(x, y, th, tw);
         }
         ctx.fill();
+        /* snow resting on the upper side of every bough */
+        if (trees.length) {
+          ctx.fillStyle = css(snowCol, Math.min(1, snowCap * 1.2) * 0.85);
+          ctx.beginPath();
+          for (let j = 0; j < trees.length; j += 4) {
+            const x = trees[j], y = trees[j + 1], th = trees[j + 2], tw = trees[j + 3], s = 0.25 + snowCap * 0.3;
+            for (let tier = 0; tier < 3; tier++) {
+              const ty = y - th * tier * 0.28, tww = tw * (1 - tier * 0.22), top = ty - th * 0.55;
+              ctx.moveTo(x, top); ctx.lineTo(x + tww * s, top + th * 0.55 * s); ctx.lineTo(x, top + th * 0.55 * s * 0.55); ctx.lineTo(x - tww * s, top + th * 0.55 * s);
+            }
+          }
+          ctx.fill();
+          const gs = ctx.createLinearGradient(0, H - H * 0.05, 0, H);
+          gs.addColorStop(0, css(snowCol, 0)); gs.addColorStop(1, css(snowCol, snowCap * 0.35));
+          ctx.fillStyle = gs; ctx.fillRect(0, H - H * 0.05, W, H * 0.05);
+        }
       }
     }
 
@@ -760,82 +814,96 @@ window.Sky = (() => {
       ctx.fillStyle = css(fc, fog * 0.18); ctx.fillRect(0, 0, W, H);
     }
 
-    /* rain */
-    const wind = wx.wind * (Math.sin(now * 0.0003) * 0.3 + 1);
-    const nDrops = Math.round(wx.rain * (lite ? 400 : 1100));
-    while (drops.length < nDrops) drops.push(spawnDrop(false));
-    if (drops.length > nDrops) drops.length = nDrops;
-    if (drops.length) {
-      ctx.globalCompositeOperation = 'source-over';
-      ctx.lineCap = 'round';
-      const rc = mixA([0.75, 0.8, 0.9], light, 0.3).map(v => v * (0.45 + 0.55 * (1 - dark)) + flash);
-      const bands = [[], [], []];
-      for (const d of drops) {
-        d.y -= d.v * k; d.x += wind * 0.12 * k;
-        if (d.y < -2) {
-          if (d.z < 9 && splashes.length < 200) {
-            const sx = W / 2 + d.x / d.z * focal, sy = H / 2 + 3.5 / d.z * focal;
-            if (sy < H) splashes.push({ x: sx, y: sy, r: 0, s: 1 / d.z, life: 1 });
+    /* rain and snow: on the GPU (js/gl3d.js) when it is running, painted here only as the fallback */
+    const gpuWx = !!(window.GL3D && GL3D.weather);
+    if (gpuWx) { drops.length = 0; flakes.length = 0; splashes.length = 0; }
+    else {
+      /* rain */
+      const wind = wx.wind * (Math.sin(now * 0.0003) * 0.3 + 1);
+      const nDrops = Math.round(wx.rain * (lite ? 400 : 1100));
+      while (drops.length < nDrops) drops.push(spawnDrop(false));
+      if (drops.length > nDrops) drops.length = nDrops;
+      if (drops.length) {
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.lineCap = 'round';
+        const rc = mixA([0.75, 0.8, 0.9], light, 0.3).map(v => v * (0.45 + 0.55 * (1 - dark)) + flash);
+        const bands = [[], [], []];
+        for (const d of drops) {
+          d.y -= d.v * k; d.x += wind * 0.12 * k;
+          if (d.y < -2) {
+            if (d.z < 9 && splashes.length < 200) {
+              const sx = W / 2 + d.x / d.z * focal, sy = H / 2 + 3.5 / d.z * focal;
+              if (sy < H) splashes.push({ x: sx, y: sy, r: 0, s: 1 / d.z, life: 1 });
+            }
+            Object.assign(d, spawnDrop(true));
           }
-          Object.assign(d, spawnDrop(true));
+          if (d.x > 16) d.x -= 32;
+          bands[d.z < 4 ? 2 : d.z < 10 ? 1 : 0].push(d);
         }
-        if (d.x > 16) d.x -= 32;
-        bands[d.z < 4 ? 2 : d.z < 10 ? 1 : 0].push(d);
-      }
-      bands.forEach((b, bi) => {
-        ctx.strokeStyle = css(rc, [0.16, 0.26, 0.38][bi]); ctx.lineWidth = [0.6, 1, 1.5][bi];
-        ctx.beginPath();
-        for (const d of b) {
-          const sx = W / 2 + d.x / d.z * focal, sy = H / 2 - (d.y - 1.5) / d.z * focal, len = d.v * 9 / d.z * focal * 0.1;
-          ctx.moveTo(sx, sy); ctx.lineTo(sx - wind * 0.12 * len * 8, sy - len);
+        bands.forEach((b, bi) => {
+          ctx.strokeStyle = css(rc, [0.16, 0.26, 0.38][bi]); ctx.lineWidth = [0.6, 1, 1.5][bi];
+          ctx.beginPath();
+          for (const d of b) {
+            const sx = W / 2 + d.x / d.z * focal, sy = H / 2 - (d.y - 1.5) / d.z * focal, len = d.v * 9 / d.z * focal * 0.1;
+            ctx.moveTo(sx, sy); ctx.lineTo(sx - wind * 0.12 * len * 8, sy - len);
+          }
+          ctx.stroke();
+        });
+        ctx.strokeStyle = css(rc, 0.35); ctx.lineWidth = 0.8;
+        for (let i = splashes.length - 1; i >= 0; i--) {
+          const s = splashes[i]; s.r += 0.6 * k; s.life -= 0.07 * k;
+          if (s.life <= 0) { splashes.splice(i, 1); continue; }
+          ctx.globalAlpha = s.life; ctx.beginPath(); ctx.ellipse(s.x, s.y, s.r * s.s * 20, s.r * s.s * 5, 0, Math.PI, TAU); ctx.stroke();
         }
-        ctx.stroke();
-      });
-      ctx.strokeStyle = css(rc, 0.35); ctx.lineWidth = 0.8;
-      for (let i = splashes.length - 1; i >= 0; i--) {
-        const s = splashes[i]; s.r += 0.6 * k; s.life -= 0.07 * k;
-        if (s.life <= 0) { splashes.splice(i, 1); continue; }
-        ctx.globalAlpha = s.life; ctx.beginPath(); ctx.ellipse(s.x, s.y, s.r * s.s * 20, s.r * s.s * 5, 0, Math.PI, TAU); ctx.stroke();
+        ctx.globalAlpha = 1;
       }
-      ctx.globalAlpha = 1;
-    }
 
-    /* snow */
-    const nFlakes = Math.round(wx.snow * (lite ? 300 : 800));
-    while (flakes.length < nFlakes) flakes.push(spawnFlake(false));
-    if (flakes.length > nFlakes) flakes.length = nFlakes;
-    if (flakes.length) {
-      ctx.globalCompositeOperation = 'lighter';
-      const t = now * 0.001;
-      for (const f of flakes) {
-        f.y -= f.v * k; f.x += (Math.sin(t * 0.8 + f.ph) * 0.01 + wind * 0.02) * k;
-        if (f.y < -2) Object.assign(f, spawnFlake(true));
-        if (f.x > 16) f.x -= 32;
-        const sx = W / 2 + f.x / f.z * focal, sy = H / 2 - (f.y - 1.5) / f.z * focal, r = f.s * 0.05 / f.z * focal;
-        ctx.globalAlpha = Math.min(0.9, 0.25 + 1.5 / f.z) * (f.z < 1.5 ? 0.35 : 1);
-        ctx.drawImage(softDot, sx - r, sy - r, r * 2, r * 2);
+      /* snow */
+      const nFlakes = Math.round(wx.snow * (lite ? 300 : 800));
+      while (flakes.length < nFlakes) flakes.push(spawnFlake(false));
+      if (flakes.length > nFlakes) flakes.length = nFlakes;
+      if (flakes.length) {
+        ctx.globalCompositeOperation = 'lighter';
+        const t = now * 0.001;
+        for (const f of flakes) {
+          f.y -= f.v * k; f.x += (Math.sin(t * 0.8 + f.ph) * 0.01 + wind * 0.02) * k;
+          if (f.y < -2) Object.assign(f, spawnFlake(true));
+          if (f.x > 16) f.x -= 32;
+          const sx = W / 2 + f.x / f.z * focal, sy = H / 2 - (f.y - 1.5) / f.z * focal, r = f.s * 0.05 / f.z * focal;
+          ctx.globalAlpha = Math.min(0.9, 0.25 + 1.5 / f.z) * (f.z < 1.5 ? 0.35 : 1);
+          ctx.drawImage(softDot, sx - r, sy - r, r * 2, r * 2);
+        }
+        ctx.globalAlpha = 1;
       }
-      ctx.globalAlpha = 1;
+      ctx.globalCompositeOperation = 'source-over';
+
     }
-    ctx.globalCompositeOperation = 'source-over';
 
     /* the lightning flash lights the whole scene */
     if (flash > 0.01) { ctx.fillStyle = `rgba(210,220,255,${flash * 0.18})`; ctx.fillRect(0, 0, W, H); }
 
     Sound.weather(wx.rain, wx.wind);
     S.info = describe(sunDeg, illum, waxing, sAlt);
+    /* everything the GPU weather and the Orbit face need to stay in sync with this sky */
+    Object.assign(G, { yaw: cam.yaw, pitch: cam.pitch, fov: cam.fov, hy, dark, flash, light, hor, zen, sunDeg,
+      rain: wx.rain, snow: wx.snow, wind: wx.wind, gust: wx.gust, wdir: wx.wdir, storm: wx.storm, fog: wx.fog, cloud,
+      cover: snowCover, frozen, ready: true, lst, sun, moon, mAlt, mAz, sAlt, sAz, illum, phase: ph, skyMs });
   }
 
   /* next sunrise / sunset, found by stepping forward in time */
   let evCache = { at: 0, text: '' };
   function nextSunEvent() {
     if (Math.abs(skyMs - evCache.at) < 5 * 6e4) return evCache.text;
-    const alt = ms => { const s = sunEq(ms); return altaz(s.ra, s.dec, lstDeg(ms))[0] * R2D + 0.83; };
+    /* altaz already adds refraction, so sunrise is the upper limb (semi-diameter 0.267°) touching the horizon */
+    const alt = ms => { const s = sunEq(ms); return altaz(s.ra, s.dec, lstDeg(ms))[0] * R2D + 0.267; };
     let prev = alt(skyMs), text = '';
     for (let m = 5; m <= 26 * 60; m += 5) {
       const ms = skyMs + m * 6e4, a = alt(ms);
       if ((prev < 0) !== (a < 0)) {
-        const d = new Date(ms);
+        /* bracketed within five minutes: bisect down to a few seconds */
+        let lo = ms - 5 * 6e4, hi = ms;
+        for (let k = 0; k < 8; k++) { const mid = (lo + hi) / 2; if ((alt(mid) < 0) === (prev < 0)) lo = mid; else hi = mid; }
+        const d = new Date(Math.round(hi / 6e4) * 6e4);
         text = (a > 0 ? 'sunrise ' : 'sunset ') + d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: !Store.get('h24') }).toLowerCase();
         break;
       }
@@ -851,8 +919,11 @@ window.Sky = (() => {
       parts.push('timelapse ' + new Date(skyMs).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: !Store.get('h24') }).toLowerCase());
     }
     const w = Store.get('weather') === 'live' ? live : target;
-    if (w && Store.get('weather') === 'live' && w.temp !== undefined) parts.push(`${w.temp}°${useF ? 'F' : 'C'} ${w.label}`);
-    else if (Store.get('weather') !== 'live') parts.push(target.label);
+    if (w && Store.get('weather') === 'live' && w.temp !== undefined) {
+      parts.push(`${loc.name}  ${w.temp}°C ${w.label}`);
+      if (w.hi !== undefined && w.lo !== undefined) parts.push(`H ${w.hi}° L ${w.lo}°`);
+    } else if (Store.get('weather') !== 'live') parts.push(`${loc.name}  ${target.label}`);
+    else parts.push(loc.name);
     if (sunDeg < -6) {
       const ph = illum > 0.97 ? 4 : illum < 0.03 ? 0 : waxing ? (illum < 0.45 ? 1 : illum < 0.55 ? 2 : 3) : (illum < 0.45 ? 7 : illum < 0.55 ? 6 : 5);
       parts.push(`${PHASES[ph]} ${Math.round(illum * 100)}%`);
@@ -867,5 +938,5 @@ window.Sky = (() => {
   setWeather(Store.get('weather'));
   if (Store.get('weather') === 'live') fetchWeather();
 
-  return { resize, frame, locate, get dark() { return S.dark; }, get info() { return S.info; } };
+  return { resize, frame, locate, state: G, get dark() { return S.dark; }, get info() { return S.info; } };
 })();

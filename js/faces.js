@@ -54,7 +54,7 @@ function Glass() {
       wrap.classList.toggle('has-sec', on);
       if (first || time.dataset.hm !== t.hm) sweep(first ? 1300 : 0);
       time.dataset.hm = t.hm;
-      write(time, t.hm, first, !first);
+      write(time, t.hm, first, false);
       write(sec, on ? t.ss : '', first, false);
     },
     beat() {
@@ -275,7 +275,7 @@ function Flip() {
     while (el.children.length > s.length) el.lastChild.remove();
     [...s].forEach((ch, i) => {
       const p = offset + i;
-      queue(el.children[i], ch, first ? 300 + p * 140 : g === 's' ? 0 : (4 - p) * 110, !first && g !== 's');
+      queue(el.children[i], ch, first ? 300 + p * 140 : g === 's' ? 0 : (4 - p) * 110, false);
     });
   }
   return {
@@ -332,8 +332,6 @@ function Orbit() {
     set(t, first) {
       if (first) return;
       flash = 1;
-      const a = -Math.PI / 2 + t.M / 60 * TAU, r = geo.R * 0.86;
-      FX.burst(geo.cx + Math.cos(a) * r, geo.cy + Math.sin(a) * r * geo.sy, { n: 60, power: 7 });
     },
     frame(dt, now, t) {
       const p = pal(), m = MOTION(), d = new Date();
@@ -425,12 +423,18 @@ function Orbit() {
 /* ============ the face switcher ============ */
 window.Faces = (() => {
   const host = document.getElementById('face');
-  const REG = { glass: Glass, swarm: Swarm, flip: Flip, orbit: Orbit };
+  /* Orbit and Swarm run in 3D on the GPU (js/gl3d.js); the 2D versions stay as the fallback */
+  const REG = {
+    glass: Glass, flip: Flip,
+    swarm: () => window.GL3D ? GL3D.Swarm() : Swarm(),
+    orbit: () => window.GL3D ? GL3D.Orbit() : Orbit(),
+  };
   let cur = null, alive = [];
   function show(name, t, first) {
     if (cur) {
       const old = cur;
       old.root.classList.add('leaving');
+      old.leave && old.leave();
       setTimeout(() => { old.unmount && old.unmount(); old.root.remove(); alive = alive.filter(f => f !== old); }, 900);
     }
     const root = document.createElement('div');

@@ -17,6 +17,7 @@
 <div id="titlebar"></div>
 <canvas id="bg"></canvas>
 <canvas id="sky"></canvas>
+<canvas id="gl"></canvas>
 <canvas id="fx"></canvas>
 <main id="stage">
   <div id="face"></div>
@@ -26,11 +27,16 @@
     <div id="wx"></div>
   </div>
 </main>
-<div id="flash"></div>
 <div id="toast"></div>
 <div id="err" role="status"></div>
 <div id="fslock"><div><p>Click to return to fullscreen</p><button id="fsunlock">turn off lock</button></div></div>
 <div id="hint">click anywhere to wake the sound</div>
+<div id="dim" aria-hidden="true"></div>
+<div id="alarm" role="alertdialog" aria-hidden="true" aria-labelledby="alarm-time">
+  <p class="al-k">Good morning</p>
+  <p id="alarm-time"></p>
+  <div class="al-b"><button id="alarm-snooze">Snooze 9 min</button><button id="alarm-stop">Stop</button></div>
+</div>
 
 <button id="gear" aria-label="Settings" title="Settings (S)">
   <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="12" cy="12" r="3"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M5.3 18.7l2.1-2.1M16.6 7.4l2.1-2.1"/></svg>
@@ -42,19 +48,23 @@
   <div id="rows"></div>
   <footer>
     <div class="btns"><button data-act="fullscreen">Fullscreen</button><button data-act="reset">Reset</button><button data-act="install" hidden>Install app</button></div>
-    <p class="keys">S settings · F fullscreen · M mute · 1–4 face<br>P palette · W weather · T timelapse · Space ✦</p>
+    <p class="keys">S settings · F fullscreen · M mute · 1–4 face<br>P palette · W weather · T timelapse<br>↑↓ brightness · Space aurora surge</p>
     <p class="credit">made by <b>Joseph</b></p>
   </footer>
 </aside>
 
+<script type="importmap">{ "imports": { "three": "./js/vendor/three.module.min.js", "three/addons/": "./js/vendor/addons/" } }</script>
 <script src="js/store.js"></script>
+<script src="js/astro.js"></script>
 <script src="js/audio.js"></script>
 <script src="js/bg.js"></script>
 <script src="js/fx.js"></script>
 <script src="js/sky.js"></script>
 <script src="js/faces.js"></script>
 <script src="js/ui.js"></script>
-<script src="js/main.js"></script>
-<script src="js/app.js"></script>
+<!-- the 3D layer is a module; main.js waits for it (deferred scripts and modules run in order) -->
+<script type="module" src="js/gl3d.js"></script>
+<script defer src="js/main.js"></script>
+<script defer src="js/app.js"></script>
 </body>
 </html>

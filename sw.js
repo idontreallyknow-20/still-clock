@@ -1,8 +1,12 @@
 // Still service worker: network-first so updates show up right away,
 // with a cached copy so the installed app still opens offline.
-const CACHE = 'still-v3';
+const CACHE = 'still-v4';
 const CORE = ['./', 'index.html', 'style.css', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/icon-512.png',
-  'js/store.js', 'js/audio.js', 'js/bg.js', 'js/fx.js', 'js/sky.js', 'js/faces.js', 'js/ui.js', 'js/main.js', 'js/app.js'];
+  'js/store.js', 'js/astro.js', 'js/audio.js', 'js/bg.js', 'js/fx.js', 'js/sky.js', 'js/faces.js', 'js/ui.js', 'js/gl3d.js', 'js/main.js', 'js/app.js',
+  'js/vendor/three.module.min.js', 'js/vendor/addons/postprocessing/EffectComposer.js', 'js/vendor/addons/postprocessing/RenderPass.js',
+  'js/vendor/addons/postprocessing/UnrealBloomPass.js', 'js/vendor/addons/postprocessing/OutputPass.js', 'js/vendor/addons/postprocessing/ShaderPass.js',
+  'js/vendor/addons/postprocessing/Pass.js', 'js/vendor/addons/postprocessing/MaskPass.js', 'js/vendor/addons/shaders/CopyShader.js',
+  'js/vendor/addons/shaders/LuminosityHighPassShader.js', 'js/vendor/addons/shaders/OutputShader.js'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(CORE)).then(() => self.skipWaiting()));

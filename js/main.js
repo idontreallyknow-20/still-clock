@@ -31,6 +31,9 @@
       case 'size': applySize(); relayoutSoon(); setTimeout(Faces.placeMeta, 850); break;
       case 'seconds': case 'h24': T = parts(new Date()); Faces.set(T, false); updateMeta(T); relayoutSoon(); setTimeout(Faces.placeMeta, 850); break;
       case 'date': body.classList.toggle('no-date', !v); break;
+      case 'brightness': case 'autoDim': applyDim(); break;
+      case 'alarmOn': if (v) { UI.toast('Alarm set for ' + Store.get('alarmTime'), 2200); Sound.init(); try { window.Notification && Notification.permission === 'default' && Notification.requestPermission(); } catch (e) {} } break;
+      case 'alarmTime': if (Store.get('alarmOn')) UI.toast('Alarm set for ' + v, 2200); break;
       case 'weather': if (v === 'live') Sky.locate(); break;
       case 'lite': body.classList.toggle('lite', v); resize(); UI.toast(v ? 'Lite mode' : 'Full effects'); break;
       case 'lockfs':
@@ -61,28 +64,65 @@
   }
 
   /* ---------- events ---------- */
-  function supernova(x, y, loud) {
-    const f = $('flash');
-    f.style.setProperty('--fx', x / innerWidth * 100 + '%'); f.style.setProperty('--fy', y / innerHeight * 100 + '%');
-    f.classList.remove('go'); void f.offsetWidth; f.classList.add('go');
-    FX.burst(x, y, { n: 280, power: 17, life: 120, size: 2.6, gravity: 0.02, drag: 0.975 });
-    [0, 140, 320].forEach((d, i) => setTimeout(() => FX.ring(x, y, { v: 16 - i * 4, w: 3 - i * 0.7, decay: 0.01 + i * 0.003, color: [pal().t1, pal().a, pal().c][i] }), d));
-    BG.pulse(x, y, 1);
-    shake();
-    if (loud) Sound.boom();
-  }
-  function shake() {
-    if (Store.get('motion') !== 'wild') return;
-    body.classList.remove('shake'); void body.offsetWidth; body.classList.add('shake');
+  /* no explosions: the minute is a slow ripple through the sky and the 3D scene; the hour a deeper one */
+  const gl3d = () => window.GL3D;
+  function surge() {
+    const a = Faces.anchor();
+    BG.pulse(a.x, a.y, 0.8); BG.surge();
+    gl3d() && GL3D.pulse(1.4);
+    Sound.surge();
   }
   function onMinute(hourChanged) {
     const a = Faces.anchor();
-    BG.pulse(a.x, a.y, 1);
-    FX.ring(a.x, a.y, { v: 11 });
-    FX.ring(a.x, a.y, { v: 6, color: pal().a, decay: 0.012, w: 1.4 });
-    if (hourChanged) { supernova(a.x, a.y, false); Sound.chime(T.H); }
-    else { Sound.shimmer(); shake(); }
+    BG.pulse(a.x, a.y, hourChanged ? 1 : 0.6);
+    if (hourChanged) BG.surge();
+    gl3d() && GL3D.pulse(hourChanged ? 1.6 : 1);
+    Sound.chimeAt(T.H, T.M);
   }
+
+  /* ---------- brightness: a slider, an optional night dim, and the alarm always wakes it ---------- */
+  function applyDim() {
+    let b = Store.get('brightness');
+    if (Store.get('autoDim')) b *= 1 - 0.55 * Sky.dark;
+    if (Alarm.ringing) b = 1;
+    $('dim').style.opacity = (1 - b).toFixed(3);
+  }
+
+  /* ---------- the alarm ---------- */
+  const Alarm = (() => {
+    let ringing = false, snoozeUntil = 0, firedKey = '', timer = 0;
+    const el = $('alarm');
+    function start() {
+      if (ringing) return;
+      ringing = true; body.classList.add('alarm-on'); el.setAttribute('aria-hidden', 'false');
+      $('alarm-time').textContent = T.hm + (T.ampm ? ' ' + T.ampm : '');
+      el.querySelector('.al-k').textContent = T.H >= 4 && T.H < 12 ? 'Good morning' : T.H < 18 ? 'Alarm' : 'Good evening';
+      Sound.init(); Sound.alarm(true);
+      const beat = () => { const a = Faces.anchor(); BG.pulse(a.x, a.y, 1); BG.surge(); gl3d() && GL3D.pulse(1.2); };
+      beat(); timer = setInterval(beat, 4200);
+      try { if (window.Notification && Notification.permission === 'granted') new Notification('Still · alarm', { body: $('alarm-time').textContent, requireInteraction: true }); } catch (e) {}
+      applyDim();
+    }
+    function stop(snooze) {
+      if (!ringing) return;
+      ringing = false; clearInterval(timer); body.classList.remove('alarm-on'); el.setAttribute('aria-hidden', 'true');
+      Sound.alarm(false);
+      snoozeUntil = snooze ? Date.now() + 9 * 6e4 : 0;
+      UI.toast(snooze ? 'Snoozed for 9 minutes' : 'Alarm off', 2200);
+      applyDim();
+    }
+    function check(t) {
+      if (ringing) return;
+      if (snoozeUntil && Date.now() >= snoozeUntil) { snoozeUntil = 0; start(); return; }
+      if (!Store.get('alarmOn')) return;
+      const [ah, am] = Store.get('alarmTime').split(':').map(Number), key = new Date().toDateString() + Store.get('alarmTime');
+      if (t.H === ah && t.M === am && firedKey !== key) { firedKey = key; start(); }
+    }
+    $('alarm-snooze').addEventListener('pointerdown', e => { e.stopPropagation(); stop(true); });
+    $('alarm-stop').addEventListener('pointerdown', e => { e.stopPropagation(); stop(false); });
+    return { check, stop, start, get ringing() { return ringing; } };
+  })();
+  window.Alarm = Alarm;
 
   /* ---------- the loop ---------- */
   /* requestAnimationFrame never fires in windows that report themselves hidden (embedded browser
@@ -95,7 +135,7 @@
     requestAnimationFrame(t => { rafSeen = performance.now(); go(t); });
     setTimeout(() => go(performance.now()), performance.now() - rafSeen < 250 ? 120 : 16);
   };
-  let prev = performance.now(), perfT = 0, perfN = 0, suggested = false;
+  let prev = performance.now(), perfT = 0, perfN = 0, suggested = false, calmSince = 0, lastPal = 0;
   try { suggested = !!sessionStorage.getItem('still.liteHint'); } catch (e) {}
   const bar = $('progress').firstElementChild;
   /* one layer throwing must never freeze the clock: each runs guarded, and the first error of each is shown */
@@ -114,10 +154,16 @@
     /* high-refresh screens (120/144 Hz) would do double the work for no visible gain: cap near 60 fps */
     if (now - prev < 13) return;
     const dt = Math.min(100, now - prev); prev = now;
-    if (!suggested && !LITE() && !document.hidden) {
+    /* automatic quality: if frames run long, step resolution and effects down; if there is headroom
+       for a good while, step back up. Measured over windows so one hiccup changes nothing */
+    if (!LITE() && !document.hidden && dt < 99) {
       perfT += dt; perfN++;
-      if (perfT > 5000) {
-        if (perfT / perfN > 30) { suggested = true; UI.toast('Laggy? Try Lite mode in settings', 4000); try { sessionStorage.setItem('still.liteHint', 1); } catch (e) {} }
+      if (perfT > 2500) {
+        const avg = perfT / perfN;
+        if (avg > 24 && QUALITY.tier < QUALITY.max) {
+          QUALITY.set(QUALITY.tier + 1); calmSince = now;
+          if (!suggested) { suggested = true; UI.toast('Tuned for smoothness', 2400); try { sessionStorage.setItem('still.liteHint', 1); } catch (e) {} }
+        } else if (avg < 17.5 && QUALITY.tier > 0 && now - calmSince > 40000) { QUALITY.set(QUALITY.tier - 1); calmSince = now; }
         perfT = perfN = 0;
       }
     }
@@ -133,12 +179,17 @@
       }
       lastMin = T.M; lastHour = T.H;
       safe('meta', () => { updateMeta(T); Faces.placeMeta(); });
+      safe('alarm', () => Alarm.check(T));
+      if (T.S % 5 === 0) applyDim();
     }
     bar.style.setProperty('--p', ((d.getSeconds() + d.getMilliseconds() / 1000) / 60).toFixed(4));
     safe('background', () => BG.frame(dt, now));
     safe('sky', () => Sky.frame(dt, now));
     safe('particles', () => FX.frame(dt, now));
     safe('face', () => Faces.frame(dt, now, T));
+    safe('3d', () => window.GL3D && GL3D.frame(dt, now));
+    /* the Sky palette follows the real sky: recompute it every couple of seconds */
+    if (Store.get('palette') === 'sky' && now - lastPal > 2000) { lastPal = now; refreshSkyPalette(); safe('palette', () => applyPalette()); }
   }
 
   /* ---------- input ---------- */
@@ -164,9 +215,8 @@
     if (Store.get('lockfs') && !document.fullscreenElement) { UI.enterFullscreen(); return; }
     if (e.target.closest('#panel, #gear')) return;
     if (UI.open) { UI.toggle(false); return; }
-    BG.pulse(e.clientX, e.clientY, 0.7);
-    FX.ring(e.clientX, e.clientY, { v: 7, w: 1.5 });
-    FX.burst(e.clientX, e.clientY, { n: 26, power: 5 });
+    BG.pulse(e.clientX, e.clientY, 0.5);
+    FX.ring(e.clientX, e.clientY, { v: 5, w: 1, decay: 0.03 });
     Sound.pluck(e.clientX / innerWidth, e.clientY / innerHeight);
   });
   addEventListener('dblclick', e => { if (!e.target.closest('#panel, #gear')) UI.fullscreen(); });
@@ -186,23 +236,30 @@
     if (Store.get('lockfs') && !document.fullscreenElement && e.key !== 'Escape') UI.enterFullscreen();
     const k = e.key.toLowerCase();
     if (k === 's') UI.toggle();
-    else if (k === 'escape') UI.open && UI.toggle(false);
+    else if (k === 'escape') { if (Alarm.ringing) Alarm.stop(false); else UI.open && UI.toggle(false); }
+    else if (k === 'arrowup' || k === 'arrowdown') {
+      e.preventDefault();
+      Store.set('brightness', Math.round(Math.max(0.1, Math.min(1, Store.get('brightness') + (k === 'arrowup' ? 0.05 : -0.05))) * 100) / 100);
+      UI.toast('Brightness ' + Math.round(Store.get('brightness') * 100) + '%');
+    }
     else if (k === 'f') UI.fullscreen();
     else if (k === 'm') UI.toast(Sound.toggleMute() ? 'Muted' : 'Sound on');
     else if (k >= '1' && k <= '4') { Store.set('face', FACES[+k - 1][0]); UI.toast(FACES[+k - 1][1]); }
     else if (k === 'p') { cycle('palette', Object.keys(PALETTES)); UI.toast(pal().name); }
-    else if (k === 'w') { cycle('weather', ['live', 'clear', 'rain', 'snow', 'storm']); UI.toast('Weather · ' + Store.get('weather')); }
+    else if (k === 'w') { cycle('weather', ['live', 'clear', 'rain', 'snow', 'blizzard', 'storm', 'fog']); UI.toast('Weather · ' + Store.get('weather')); }
     else if (k === 't') { cycle('skyMode', ['real', 'timelapse']); UI.toast(Store.get('skyMode') === 'timelapse' ? 'Timelapse' : 'Real time'); }
-    else if (k === ' ') { e.preventDefault(); const a = Faces.anchor(); supernova(a.x, a.y, true); }
+    else if (k === ' ') { e.preventDefault(); if (Alarm.ringing) Alarm.stop(true); else surge(); }
     else return;
-    if (k !== ' ' && k !== 's' && k !== 'escape') Sound.ui('click');
+    if (k !== ' ' && k !== 's' && k !== 'escape' && !k.startsWith('arrow')) Sound.ui('click');
   });
 
-  function resize() { safe('background', BG.resize); safe('particles', FX.resize); safe('sky', Sky.resize); safe('face', Faces.relayout); }
+  function resize() { safe('background', BG.resize); safe('particles', FX.resize); safe('sky', Sky.resize); safe('3d', () => window.GL3D && GL3D.resize()); safe('face', Faces.relayout); }
+  QUALITY.on(() => { safe('particles', FX.resize); safe('sky', Sky.resize); });
   let rz; addEventListener('resize', () => { clearTimeout(rz); rz = setTimeout(resize, 120); });
 
   /* ---------- boot ---------- */
-  applyPalette(true); applyMotion(); applySize();
+  if (Store.get('palette') === 'sky') refreshSkyPalette();
+  applyPalette(true); applyMotion(); applySize(); applyDim();
   body.classList.toggle('no-date', !Store.get('date'));
   body.classList.toggle('lite', Store.get('lite'));
   fsState();
@@ -210,7 +267,7 @@
   safe('face', () => Faces.show(Store.get('face'), T, true));
   raf(loop);
   setTimeout(() => body.classList.remove('booting'), 50);
-  setTimeout(() => { const a = Faces.anchor(); FX.ring(a.x, a.y, { v: 15, w: 2.5, decay: 0.01 }); BG.pulse(a.x, a.y, 1); }, 900);
+  setTimeout(() => { const a = Faces.anchor(); BG.pulse(a.x, a.y, 1); }, 900);
   document.fonts && document.fonts.ready.then(() => safe('face', Faces.relayout));
   if (Store.get('sound') || Store.get('ambient')) {
     setTimeout(() => { if (!Sound.running()) $('hint').classList.add('show'); }, 1800);

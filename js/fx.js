@@ -7,7 +7,7 @@ window.FX = (() => {
   const R = Math.random, TAU = Math.PI * 2;
 
   function resize() {
-    dpr = Math.min(devicePixelRatio || 1, LITE() ? 1 : 2);
+    dpr = Math.min(devicePixelRatio || 1, LITE() ? 1 : [2, 1.5, 1, 1][QUALITY.tier]);
     W = innerWidth; H = innerHeight;
     cv.width = W * dpr; cv.height = H * dpr;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);

@@ -1,6 +1,6 @@
 /* Still v3 — every sound is synthesized live with WebAudio; no files */
 window.Sound = (() => {
-  let ctx = null, master, verbIn, analyser, data, noiseBuf, muted = false;
+  let ctx = null, master, comp, verbIn, analyser, data, noiseBuf, muted = false;
   const curve = v => v * v;
   const live = () => ctx && ctx.state === 'running';
   const fx = () => live() && Store.get('sound');
@@ -13,7 +13,7 @@ window.Sound = (() => {
     ctx = new AC();
     master = ctx.createGain();
     master.gain.value = curve(Store.get('volume'));
-    const comp = ctx.createDynamicsCompressor();
+    comp = ctx.createDynamicsCompressor();
     comp.threshold.value = -16; comp.ratio.value = 4; comp.attack.value = 0.003; comp.release.value = 0.3;
     master.connect(comp); comp.connect(ctx.destination);
     analyser = ctx.createAnalyser(); analyser.fftSize = 512; data = new Uint8Array(512);
@@ -137,12 +137,83 @@ window.Sound = (() => {
     for (let j = 0; j < 4; j++) { bell(notes[k], j * 0.085, 0.032, 2.4, 0.8, (R() - 0.5) * 1.4); k = Math.min(notes.length - 1, k + 1 + (R() * 2 | 0)); }
   }
 
-  function chime(hour) {
-    if (!live() || !Store.get('chime')) return;
-    const q = [415.3, 369.99, 329.63, 246.94, 329.63, 415.3, 369.99, 246.94];
-    q.forEach((f, i) => bell(f, i * 0.72 + (i > 3 ? 0.5 : 0), 0.13, 3.2, 0.6, (i % 2 ? 0.3 : -0.3)));
-    const n = hour % 12 || 12, start = q.length * 0.72 + 1.6;
-    for (let i = 0; i < n; i++) { bell(164.81, start + i * 1.5, 0.16, 4.5, 0.7); tone(82.4, start + i * 1.5, 0.12, 3, 'sine', 0.3); }
+  /* a cast church bell: additive partials at the ratios real bells ring at (hum, prime, minor-third tierce,
+     quint, nominal and above), each fading at its own rate, the low ones longest */
+  const PARTIALS = [[0.5, 0.55, 1], [1, 0.8, 0.7], [1.183, 0.45, 0.5], [1.506, 0.3, 0.38], [2, 0.5, 0.32], [2.514, 0.18, 0.2], [2.662, 0.12, 0.16], [3.011, 0.14, 0.12], [4.166, 0.06, 0.08]];
+  function tower(f, when = 0, g = 0.12, dur = 5, pan = 0) {
+    const t = ctx.currentTime + when, o = out(0.55, pan, when + dur + 5);
+    PARTIALS.forEach(([r, a, life]) => {
+      const osc = ctx.createOscillator(), env = ctx.createGain();
+      osc.frequency.value = f * r * (1 + (R() - 0.5) * 0.002);
+      env.gain.setValueAtTime(0, t);
+      env.gain.linearRampToValueAtTime(g * a, t + 0.006);
+      env.gain.exponentialRampToValueAtTime(0.0001, t + dur * life);
+      osc.connect(env); env.connect(o); osc.start(t); osc.stop(t + dur * life + 0.05);
+    });
+    noise(when, 0.06, g * 0.5, 'bandpass', f * 6, f * 3, 2, 0.3, pan); /* the clapper's strike */
+  }
+
+  /* the Westminster Quarters, in E major, exactly as Big Ben rings them */
+  const GS = 415.3, FS = 369.99, E4 = 329.63, B3 = 246.94;
+  const PHRASE = [null, [GS, FS, E4, B3], [E4, GS, FS, B3], [E4, FS, GS, E4], [GS, E4, FS, B3], [B3, FS, GS, E4]];
+  function phrases(list, start) {
+    let t = start;
+    list.forEach(n => { PHRASE[n].forEach((f, i) => tower(f, t + i * 0.62, 0.1, i === 3 ? 6 : 4.2, [-0.35, 0.1, 0.35, -0.1][i])); t += 0.62 * 3 + 1.25; });
+    return t;
+  }
+  /* called every minute with the new time: rings what the chosen interval allows */
+  function chimeAt(H, M) {
+    const every = Store.get('chimeEvery');
+    if (!live() || every === 'off') return;
+    const n = +every;
+    if (M === 0) {
+      const end = phrases([2, 3, 4, 5], 0), strikes = H % 12 || 12;
+      for (let i = 0; i < strikes; i++) tower(164.81, end + 1 + i * 2.1, 0.16, 7, 0);
+    } else if (M % 15 === 0) { if (n <= 15) phrases({ 15: [1], 30: [2, 3], 45: [4, 5, 1] }[M], 0); }
+    else if (M % 5 === 0) { if (n <= 5) [E4 * 2, GS * 2, B3 * 4].forEach((f, i) => bell(f, i * 0.16, 0.05, 3.2, 0.75, (i - 1) * 0.5)); }
+    else if (n === 1) bell(B3 * 8, 0, 0.03, 2.4, 0.85, (R() - 0.5) * 0.8);
+  }
+  /* a preview of the chosen interval, so picking it in settings tells you what it sounds like */
+  function preview(every) {
+    if (!live()) return;
+    if (every === '1') bell(B3 * 8, 0, 0.03, 2.4, 0.85);
+    else if (every === '5') [E4 * 2, GS * 2, B3 * 4].forEach((f, i) => bell(f, i * 0.16, 0.05, 3.2, 0.75, (i - 1) * 0.5));
+    else if (every === '15' || every === '60') phrases([1], 0);
+  }
+  /* the alarm: a sunrise of bells that keeps climbing until you answer it. It is wired past the master
+     gain on purpose, so mute and a low volume setting can never silence it */
+  const alarm = { on: false };
+  function alarmRing(on) {
+    if (!ctx) return;
+    if (!on) { alarm.on = false; clearInterval(alarm.t); if (alarm.g) { alarm.g.gain.setTargetAtTime(0, ctx.currentTime, 0.3); const g = alarm.g; setTimeout(() => g.disconnect(), 3000); alarm.g = null; } return; }
+    if (alarm.on) return;
+    alarm.on = true;
+    const g = alarm.g = ctx.createGain();
+    g.gain.setValueAtTime(0.35, ctx.currentTime); g.gain.linearRampToValueAtTime(1.4, ctx.currentTime + 90);
+    g.connect(comp);
+    const verb = ctx.createGain(); verb.gain.value = 0.4; g.connect(verb); verb.connect(verbIn);
+    let n = 0;
+    const ring = () => {
+      if (!alarm.on || ctx.state !== 'running') return;
+      const t = ctx.currentTime, up = Math.min(1, n / 10);
+      [329.63, 415.3, 493.88, 659.25, 830.61].forEach((f, i) => {
+        const o = ctx.createOscillator(), e = ctx.createGain(), m = ctx.createOscillator(), mg = ctx.createGain();
+        o.frequency.value = f * (n % 4 === 3 ? 1.5 : 1); m.frequency.value = o.frequency.value * 3.5; mg.gain.value = f * 1.2;
+        m.connect(mg); mg.connect(o.frequency); o.connect(e); e.connect(g);
+        const s = t + i * (0.2 - up * 0.07);
+        e.gain.setValueAtTime(0, s); e.gain.linearRampToValueAtTime(0.09, s + 0.005); e.gain.exponentialRampToValueAtTime(0.0001, s + 2.6);
+        o.start(s); m.start(s); o.stop(s + 2.7); m.stop(s + 2.7);
+      });
+      n++;
+    };
+    ring(); alarm.t = setInterval(ring, 3500);
+  }
+
+  /* the aurora surge (Space): a slow swell, no bang */
+  function surge() {
+    if (!fx()) return;
+    noise(0, 3.2, 0.07, 'bandpass', 120, 2400, 1.1, 0.8);
+    [329.63, 493.88, 659.25, 830.61, 987.77].forEach((f, i) => bell(f * 2, 0.5 + i * 0.22, 0.03, 4.5, 0.95, (i - 2) * 0.4));
   }
 
   function boom() {
@@ -240,10 +311,11 @@ window.Sound = (() => {
     if (!ctx) return;
     if (k === 'volume') master.gain.setTargetAtTime(muted ? 0 : curve(v), ctx.currentTime, 0.05);
     if (k === 'ambient') v ? pad.start() : pad.stop();
+    if (k === 'chimeEvery') preview(v);
   });
 
   return {
-    init, ui, flap, pluck, shimmer, chime, boom, weather, thunder,
+    init, ui, flap, pluck, shimmer, chimeAt, preview, surge, boom, weather, thunder, alarm: alarmRing,
     running: live,
     toggleMute() {
       muted = !muted;

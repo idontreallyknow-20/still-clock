@@ -11,7 +11,7 @@
 html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(--t1); font-family: var(--display); -webkit-font-smoothing: antialiased; user-select: none; }
 button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; }
 
-canvas#bg, canvas#sky, canvas#fx, .face-canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+canvas#bg, canvas#sky, canvas#gl, canvas#fx, .face-canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
 #bg { transition: opacity 2.4s ease; }
 #sky { pointer-events: none; transition: opacity 2s ease; }
 #fx { pointer-events: none; z-index: 5; }
@@ -99,8 +99,6 @@ body.m-wild .ch.out { animation: g-out-wild .8s var(--ease) both; }
   0% { transform: none; opacity: 1; }
   100% { transform: translateY(-120%) scale(.3) rotateZ(40deg); filter: blur(.25em); opacity: 0; }
 }
-body.m-wild.shake #stage { animation: shake .6s var(--ease); }
-@keyframes shake { 0%,100% { transform: none; } 20% { transform: translate(-8px, 4px) rotate(-.4deg); } 40% { transform: translate(7px, -5px) rotate(.3deg); } 60% { transform: translate(-4px, 2px); } 80% { transform: translate(2px, -1px); } }
 
 /* ---------- SWARM ---------- */
 /* the blurred core under the particles: fades in behind each new time, then breathes (opacity only, so the GPU does it) */
@@ -180,7 +178,8 @@ body.panel-open #gear { opacity: 0; pointer-events: none; }
 .seg button.on { color: #fff; }
 .seg .ind { position: absolute; left: 0; top: 3px; bottom: 3px; border-radius: 11px; background: rgba(255, 255, 255, .12);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, .12), 0 4px 18px color-mix(in srgb, var(--glow) 25%, transparent); transition: transform .5s var(--spring), width .5s var(--spring); }
-.swatches { display: flex; gap: 10px; }
+.swatches { display: flex; flex-wrap: wrap; gap: 6px; }
+.row-swatch { flex-direction: column; align-items: flex-start; gap: 6px; padding-bottom: 4px; }
 .swatches button { width: 30px; height: 30px; border-radius: 50%; padding: 3px; border: 1px solid transparent; transition: transform .4s var(--spring), border-color .3s; }
 .swatches button span { display: block; width: 100%; height: 100%; border-radius: 50%; background: conic-gradient(from 200deg, var(--s1), var(--s2), var(--s3), var(--s1)); }
 .swatches button:hover { transform: scale(1.15); }
@@ -221,10 +220,6 @@ input[type=range]::-moz-range-thumb { width: 15px; height: 15px; border: 0; bord
   font-family: var(--mono); font-size: 10px; letter-spacing: .06em; color: #ffd7d7; background: rgba(60, 8, 16, .7); border: 1px solid rgba(255, 120, 140, .3);
   opacity: 0; transform: translateY(8px); transition: .5s var(--ease); pointer-events: none; }
 #err.show { opacity: 1; transform: none; }
-#flash { position: fixed; inset: 0; z-index: 8; pointer-events: none; opacity: 0;
-  background: radial-gradient(circle at var(--fx, 50%) var(--fy, 45%), #fff, color-mix(in srgb, var(--glow) 60%, transparent) 25%, transparent 70%); mix-blend-mode: screen; }
-#flash.go { animation: flash 1.4s ease-out; }
-@keyframes flash { 0% { opacity: .95; } 100% { opacity: 0; } }
 
 body.booting #stage { opacity: 0; }
 #stage { transition: opacity 1.4s ease; }
@@ -262,3 +257,49 @@ body.lite #gear, body.lite #toast, body.lite #fslock { backdrop-filter: none; -w
 body.wco #titlebar { display: block; position: fixed; z-index: 30; top: env(titlebar-area-y, 0); left: env(titlebar-area-x, 0);
   width: env(titlebar-area-width, 100%); height: env(titlebar-area-height, 32px); app-region: drag; -webkit-app-region: drag; }
 body.wco #hint { top: calc(env(titlebar-area-height, 32px) + 18px); }
+
+/* ============ v4: the 3D layer, brightness, alarm, live palette ============ */
+/* palette colours are registered so they glide instead of jumping when the Sky palette shifts */
+@property --a1 { syntax: '<color>'; inherits: true; initial-value: #1de9b6; }
+@property --a2 { syntax: '<color>'; inherits: true; initial-value: #7c4dff; }
+@property --a3 { syntax: '<color>'; inherits: true; initial-value: #ff4fa3; }
+@property --t2 { syntax: '<color>'; inherits: true; initial-value: #9fe8ff; }
+@property --glow { syntax: '<color>'; inherits: true; initial-value: #4dd9ff; }
+:root { transition: --a1 2.4s ease, --a2 2.4s ease, --a3 2.4s ease, --t2 2.4s ease, --glow 2.4s ease; }
+
+/* the Three.js layer is pure light on black, so it is screened over the sky: black adds nothing */
+#gl { z-index: 2; pointer-events: none; mix-blend-mode: screen; opacity: 0; transition: opacity 1.4s ease; }
+#gl.on { opacity: 1; }
+.face-root.gl-face { filter: none !important; }
+
+/* brightness: one black layer under the controls, so the settings stay readable while dimmed */
+#dim { position: fixed; inset: 0; z-index: 19; background: #000; opacity: 0; pointer-events: none; transition: opacity 1.2s ease; }
+
+.row-seg-l { flex-direction: column; align-items: stretch; gap: 8px; padding: 6px 0; }
+.row-seg-l .seg button { font-size: 11.5px; }
+.row-time input.time { font: 400 13px var(--mono); color: #fff; background: rgba(255, 255, 255, .06); border: 1px solid rgba(255, 255, 255, .1);
+  border-radius: 10px; padding: 6px 10px; color-scheme: dark; outline: none; transition: border-color .2s ease; }
+.row-time input.time:focus-visible { border-color: var(--glow); }
+.row + .row-seg { margin-top: 6px; }
+.swatches button[data-v="sky"] span { background: conic-gradient(from 200deg, #ff8a4a, #ff4f8b, #7c4dff, #1de9b6, #40d4ff, #ffd36b, #ff8a4a); }
+
+/* the alarm: a card that rises out of the sky */
+#alarm { position: fixed; left: 50%; top: 50%; z-index: 35; min-width: min(360px, calc(100vw - 32px)); padding: 30px 30px 24px; border-radius: 28px; text-align: center;
+  background: rgba(12, 13, 20, .5); border: 1px solid rgba(255, 255, 255, .12);
+  backdrop-filter: blur(26px) saturate(1.6); -webkit-backdrop-filter: blur(26px) saturate(1.6);
+  box-shadow: 0 40px 120px rgba(0, 0, 0, .55), 0 0 80px color-mix(in srgb, var(--glow) 30%, transparent);
+  opacity: 0; pointer-events: none; transform: translate(-50%, -46%) scale(.96); transition: opacity .3s cubic-bezier(0.23, 1, 0.32, 1), transform .3s cubic-bezier(0.23, 1, 0.32, 1); }
+body.alarm-on #alarm { opacity: 1; pointer-events: auto; transform: translate(-50%, -50%); }
+#alarm .al-k { font-family: var(--mono); font-size: 11px; letter-spacing: .32em; text-transform: uppercase; color: var(--t2); opacity: .8; }
+#alarm-time { font-weight: 200; font-size: clamp(56px, 9vw, 96px); line-height: 1.1; margin: 6px 0 20px;
+  background: linear-gradient(180deg, #fff, var(--t2)); -webkit-background-clip: text; background-clip: text; color: transparent;
+  animation: al-breathe 3.5s ease-in-out infinite; }
+@keyframes al-breathe { 50% { opacity: .72; } }
+#alarm .al-b { display: flex; gap: 10px; }
+#alarm button { flex: 1; padding: 13px 0; border-radius: 14px; font-size: 14px; background: rgba(255, 255, 255, .08); border: 1px solid rgba(255, 255, 255, .1);
+  transition: background .2s ease, transform .16s cubic-bezier(0.23, 1, 0.32, 1); }
+#alarm button:active { transform: scale(.97); }
+#alarm #alarm-stop { background: linear-gradient(90deg, var(--a1), var(--a2)); color: #04060c; font-weight: 500; border: 0; }
+@media (hover: hover) and (pointer: fine) { #alarm button:hover { background: rgba(255, 255, 255, .14); } #alarm #alarm-stop:hover { filter: brightness(1.1); } }
+@media (prefers-reduced-motion: reduce) { #alarm { transition: opacity .3s ease; transform: translate(-50%, -50%); } #alarm-time { animation: none; } }
+body.lite #alarm { backdrop-filter: none; -webkit-backdrop-filter: none; background: rgba(13, 14, 21, .95); }

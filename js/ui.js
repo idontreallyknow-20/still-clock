@@ -12,21 +12,31 @@ window.UI = (() => {
       { key: 'date', label: 'Date', type: 'toggle' },
       { key: 'size', label: 'Size', type: 'range', min: 0.5, max: 1.5, step: 0.01 },
     ]],
-    ['Sky', [
+    ['Display', [
+      { key: 'brightness', label: 'Brightness', type: 'range', min: 0.1, max: 1, step: 0.01 },
+      { key: 'autoDim', label: 'Dim at night', type: 'toggle' },
+    ]],
+    ['Alarm', [
+      { key: 'alarmOn', label: 'Alarm', type: 'toggle' },
+      { key: 'alarmTime', label: 'Wake at', type: 'time' },
+    ]],
+    ['Sky · Richmond Hill', [
       { key: 'skyMode', type: 'seg', opts: [['real', 'Real time'], ['timelapse', 'Timelapse']] },
-      { key: 'weather', type: 'seg', opts: [['live', 'Live'], ['clear', 'Clear'], ['rain', 'Rain'], ['snow', 'Snow'], ['storm', 'Storm']] },
+      { key: 'weather', type: 'seg', opts: [['live', 'Live'], ['clear', 'Clear'], ['rain', 'Rain'], ['storm', 'Storm']] },
+      { key: 'weather', type: 'seg', opts: [['snow', 'Snow'], ['blizzard', 'Blizzard'], ['fog', 'Fog']] },
       { key: 'lines', label: 'Constellations', type: 'toggle' },
     ]],
     ['Motion', [{ key: 'motion', type: 'seg', opts: [['calm', 'Calm'], ['normal', 'Normal'], ['wild', 'Wild']] }]],
     ['Sound', [
       { key: 'sound', label: 'Effects', type: 'toggle' },
-      { key: 'chime', label: 'Hourly chime', type: 'toggle' },
+      { key: 'chimeEvery', label: 'Chime', type: 'seg', opts: [['off', 'Off'], ['1', '1 min'], ['5', '5 min'], ['15', '15 min'], ['60', 'Hourly']] },
       { key: 'ambient', label: 'Ambient drone', type: 'toggle' },
       { key: 'volume', label: 'Volume', type: 'range', min: 0, max: 1, step: 0.01 },
     ]],
   ];
 
-  const sync = {};
+  /* several controls can drive one setting (the weather picker is two rows), so each key keeps a list */
+  const syncs = {}, sync = new Proxy({}, { set(o, k, f) { (syncs[k] = syncs[k] || []).push(f); return true; }, get(o, k) { return syncs[k] && (v => syncs[k].forEach(f => f(v))); } });
   let i = 0;
   for (const [title, rows] of SCHEMA) {
     const sec = document.createElement('section');
@@ -45,8 +55,9 @@ window.UI = (() => {
     const row = document.createElement('div');
     row.className = 'row row-' + r.type;
     if (r.type === 'seg') {
-      row.innerHTML = `<div class="seg">${r.opts.map(([v, l]) => `<button data-v="${v}">${l}</button>`).join('')}<span class="ind"></span></div>`;
-      const seg = row.firstChild, ind = seg.querySelector('.ind');
+      row.innerHTML = (r.label ? `<span class="lbl">${r.label}</span>` : '') + `<div class="seg">${r.opts.map(([v, l]) => `<button data-v="${v}">${l}</button>`).join('')}<span class="ind"></span></div>`;
+      if (r.label) row.classList.add('row-seg-l');
+      const seg = row.querySelector('.seg'), ind = seg.querySelector('.ind');
       seg.addEventListener('click', e => {
         const b = e.target.closest('button'); if (!b) return;
         Store.set(r.key, b.dataset.v); Sound.ui('click');
@@ -54,6 +65,7 @@ window.UI = (() => {
       sync[r.key] = v => {
         seg.querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.v === v));
         const b = seg.querySelector(`[data-v="${v}"]`);
+        ind.style.opacity = b ? 1 : 0;
         if (b && b.offsetWidth) { ind.style.width = b.offsetWidth + 'px'; ind.style.transform = `translateX(${b.offsetLeft}px)`; }
       };
       if (window.ResizeObserver) new ResizeObserver(() => sync[r.key](Store.get(r.key))).observe(seg);
@@ -69,6 +81,12 @@ window.UI = (() => {
         row.querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.v === v));
         name.textContent = PALETTES[v].name;
       };
+    } else if (r.type === 'time') {
+      row.innerHTML = `<span class="lbl">${r.label}</span><input type="time" class="time" aria-label="${r.label}">`;
+      const inp = row.querySelector('input');
+      inp.addEventListener('change', () => { if (/^\d\d:\d\d$/.test(inp.value)) { Store.set(r.key, inp.value); Sound.ui('click'); } });
+      inp.addEventListener('keydown', e => e.stopPropagation());
+      sync[r.key] = v => { if (document.activeElement !== inp) inp.value = v; };
     } else if (r.type === 'toggle') {
       row.innerHTML = `<span class="lbl">${r.label}</span><button class="tog" role="switch"><i></i></button>`;
       const t = row.querySelector('.tog');
@@ -86,6 +104,7 @@ window.UI = (() => {
         inp.value = v;
         inp.style.setProperty('--p', ((v - r.min) / (r.max - r.min) * 100) + '%');
         val.textContent = Math.round(v * 100) + '%';
+        inp.setAttribute('aria-valuetext', val.textContent);
       };
     }
     row.addEventListener('pointerenter', () => Sound.ui('hover'));
@@ -100,7 +119,7 @@ window.UI = (() => {
     if (b.dataset.act === 'reset') { Store.reset(); toast('Settings reset'); }
   });
 
-  function syncAll() { for (const k in sync) sync[k](Store.get(k)); }
+  function syncAll() { for (const k in syncs) sync[k](Store.get(k)); }
   Store.on((k, v) => sync[k] && sync[k](v));
 
   let open = false;
