@@ -238,7 +238,7 @@
   }
   addEventListener('pointermove', active);
 
-  let konami = '';
+  let konami = '', konamiB = [];
   const cycle = (key, list) => { const i = list.indexOf(Store.get(key)); Store.set(key, list[(i + 1) % list.length]); };
   addEventListener('keydown', e => {
     if (e.ctrlKey || e.metaKey || e.altKey) return;
@@ -246,8 +246,13 @@
     if (Store.get('lockfs') && !document.fullscreenElement && e.key !== 'Escape') UI.enterFullscreen();
     const k = e.key.toLowerCase();
     /* ↑↑↓↓←→←→BA: they come */
+    /* the code's arrows also nudge the brightness, so remember it from before the sequence and put it back */
     konami = (konami + ',' + k).split(',').slice(-10).join(',');
-    if (konami === 'arrowup,arrowup,arrowdown,arrowdown,arrowleft,arrowright,arrowleft,arrowright,b,a') { Sky.summon('ufo'); UI.toast('👽 Incoming', 2400); konami = ''; }
+    konamiB = konamiB.concat(Store.get('brightness')).slice(-10);
+    if (konami === 'arrowup,arrowup,arrowdown,arrowdown,arrowleft,arrowright,arrowleft,arrowright,b,a') {
+      Store.set('brightness', konamiB[0]); Sky.summon('ufo'); UI.toast('👽 Incoming', 2400); konami = ''; konamiB = [];
+      return;
+    }
     if (k === 's') UI.toggle();
     else if (k === 'escape') { if (Alarm.ringing) Alarm.stop(false); else UI.open && UI.toggle(false); }
     else if (k === 'arrowup' || k === 'arrowdown') {
