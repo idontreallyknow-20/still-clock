@@ -72,7 +72,7 @@ window.Sky = (() => {
     stars.push(s); if (name) idx[name] = s;
   }
   for (const n in NAMED) { const [ra, dec, mag, c] = NAMED[n]; addStar(ra * 15, dec, mag, c, n); }
-  for (let i = 0; i < 1700; i++) addStar(R() * 360, Math.asin(R() * 2 - 1) * R2D, 6.6 - 4 * Math.pow(R(), 4), R() < 0.2 ? 0 : R() < 0.8 ? 1 : 2);
+  for (let i = 0; i < 3200; i++) addStar(R() * 360, Math.asin(R() * 2 - 1) * R2D, 6.6 - 4 * Math.pow(R(), 4), R() < 0.2 ? 0 : R() < 0.8 ? 1 : 2);
   /* the Milky Way: stars and haze along the galactic plane */
   const GP = { ra: 192.859 * D2R, dec: 27.128 * D2R, l: 122.932 * D2R };
   function gal2eq(l, b) {
@@ -397,7 +397,158 @@ window.Sky = (() => {
 
   /* the star layer: Milky Way haze, stars and constellation figures, painted at the current camera */
   const starCv = document.createElement('canvas'), starCam = { yaw: 0, pitch: 0 };
-  let starAge = 1e9, starVis = -1, starW = 0, starH = 0;
+  let starAge = 1e9, starVis = -1, starW = 0, starH = 0, starOx = 0, starOy = 0;
+
+  /* ---------- aircraft: arrivals and departures around Pearson, and now and then a surprise ---------- */
+  const AIRLINES = [['AC', 'Air Canada'], ['WS', 'WestJet'], ['PD', 'Porter'], ['UA', 'United'], ['DL', 'Delta'], ['BA', 'British Airways'],
+    ['LH', 'Lufthansa'], ['EK', 'Emirates'], ['AF', 'Air France'], ['TS', 'Air Transat'], ['KL', 'KLM'], ['CX', 'Cathay Pacific']];
+  const DEST = ['YVR', 'YYC', 'YUL', 'YHZ', 'YOW', 'YWG', 'LHR', 'CDG', 'FRA', 'AMS', 'DXB', 'HKG', 'JFK', 'LAX', 'ORD', 'MIA', 'CUN', 'NRT'];
+  let craft = null, nextCraft = performance.now() + 9000, craftHit = null;
+  function bannerLines() {
+    const d = new Date(), h = d.getHours(), day = d.toLocaleDateString('en-CA', { weekday: 'long' }).toUpperCase();
+    const m = ['HAPPY ' + day, 'MADE BY JOSEPH', 'HELLO RICHMOND HILL', 'DRINK SOME WATER', 'YOU LOOK GREAT TODAY', 'STAY STILL', 'TIME FLIES'];
+    if (h >= 1 && h < 5) m.push('GO TO SLEEP');
+    if (d.getMonth() === 11) m.push('HAPPY HOLIDAYS');
+    if (d.getMonth() === 9 && d.getDate() === 31) m.push('BOO');
+    return m;
+  }
+  function spawnCraft(kind) {
+    const d = new Date(), xmas = d.getMonth() === 11 && d.getDate() <= 25, night = S.dark > 0.6;
+    kind = kind || (night && R() < 0.05 ? 'ufo' : xmas && night && R() < 0.3 ? 'sleigh' : R() < 0.15 ? 'banner' : 'plane');
+    const dir = R() < 0.5 ? 1 : -1, az0 = cam.yaw - dir * (0.95 + R() * 0.3), al = AIRLINES[R() * AIRLINES.length | 0], lines = bannerLines();
+    craft = {
+      kind, dir, az0, az1: az0 + dir * (1.9 + R() * 0.5), t: 0, trail: [], trailT: 0, ph: R() * 10, flee: 0,
+      alt: Math.min(70 * D2R, Math.max(4 * D2R, cam.pitch + Math.atan((H / 2 - H * (kind === 'banner' ? 0.2 : kind === 'ufo' ? 0.16 : kind === 'sleigh' ? 0.12 : 0.05 + R() * 0.15)) / focal))),
+      dur: kind === 'banner' ? 70000 : kind === 'ufo' ? 30000 : kind === 'sleigh' ? 32000 : 45000 + R() * 25000,
+      flight: `${al[0]} ${100 + (R() * 899 | 0)} · ${al[1]} · YYZ → ${DEST[R() * DEST.length | 0]} · ${(28 + (R() * 12 | 0)) * 1000} ft`,
+      msg: lines[R() * lines.length | 0],
+    };
+  }
+  /* where the craft is at progress u: the UFO slows to a hover, then leaves in a hurry */
+  function craftAt(c, u) {
+    let v = u;
+    if (c.kind === 'ufo') v = u < 0.35 ? u / 0.35 * 0.45 : u < 0.7 ? 0.45 + (u - 0.35) / 0.35 * 0.1 : 0.55 + Math.pow((u - 0.7) / 0.3, 2.2) * 0.45;
+    const az = lerp(c.az0, c.az1, v);
+    let alt = c.alt + Math.sin(v * Math.PI) * 0.03;
+    if (c.kind === 'ufo') alt += Math.sin(u * 40 + c.ph) * 0.004 + (u > 0.7 ? Math.pow((u - 0.7) / 0.3, 2) * 0.5 : 0);
+    if (c.kind === 'sleigh') alt += Math.sin(u * 9 + c.ph) * 0.012;
+    return [alt, az];
+  }
+  function drawCraft(dt, now, dark, cloud, p) {
+    craftHit = null;
+    if (!Store.get('planes')) { craft = null; return; }
+    if (!craft && now > nextCraft && !wx.storm && wx.fog < 0.5) spawnCraft();
+    if (!craft) return;
+    const c = craft;
+    c.t += dt * (c.flee ? 2.5 : 1);
+    const u = c.t / c.dur;
+    if (u >= 1) { craft = null; nextCraft = now + 25000 + R() * 50000; return; }
+    const [alt, az] = craftAt(c, u);
+    project(alt, az); if (P[2] <= 0) return;
+    const x = P[0], y = P[1];
+    c.sx = x; c.sy = y;
+    const [alt2, az2] = craftAt(c, Math.min(1, u + 0.004)); project(alt2, az2);
+    const hd = Math.atan2(P[1] - y, P[0] - x), hx = Math.cos(hd), hy2 = Math.sin(hd);
+    const s = Math.max(7, H * 0.011), fade = Math.min(1, u * 12, (1 - u) * 12) * (1 - cloud * 0.35), t = now / 1000;
+    const night = dark > 0.45;
+    ctx.save();
+    /* contrails by day: two white lines that spread and fade behind the plane */
+    if (c.kind === 'plane' && !night && c.alt > 20 * D2R) {
+      c.trailT += dt;
+      if (c.trailT > 200) { c.trailT = 0; c.trail.push([alt, az]); if (c.trail.length > 70) c.trail.shift(); }
+      ctx.globalCompositeOperation = 'source-over'; ctx.lineCap = 'round';
+      for (let i = c.trail.length - 1; i > 0; i--) {
+        const k = i / c.trail.length;
+        project(c.trail[i][0], c.trail[i][1]); const ax = P[0], ay = P[1];
+        project(c.trail[i - 1][0], c.trail[i - 1][1]);
+        ctx.strokeStyle = `rgba(255,255,255,${0.5 * k * fade * (1 - cloud * 0.6)})`; ctx.lineWidth = 1 + (1 - k) * 5;
+        ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(P[0], P[1]); ctx.stroke();
+      }
+    }
+    ctx.translate(x, y);
+    if (c.kind === 'plane' || c.kind === 'banner') {
+      const tiny = c.kind === 'banner' ? 0.6 : 1;
+      /* silhouette: fuselage, swept wings, tail */
+      ctx.save(); ctx.rotate(hd); ctx.scale(s * tiny, s * tiny);
+      ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = fade * (night ? 0.35 : 0.8);
+      ctx.fillStyle = night ? '#10131c' : '#2a2f3a';
+      ctx.beginPath(); ctx.ellipse(0, 0, 1, 0.11, 0, 0, TAU); ctx.fill();
+      ctx.beginPath(); ctx.moveTo(0.15, 0); ctx.lineTo(-0.2, 0.75); ctx.lineTo(-0.35, 0.75); ctx.lineTo(-0.1, 0); ctx.lineTo(-0.35, -0.75); ctx.lineTo(-0.2, -0.75); ctx.closePath(); ctx.fill();
+      ctx.beginPath(); ctx.moveTo(-0.75, 0); ctx.lineTo(-0.95, 0.3); ctx.lineTo(-1, 0.3); ctx.lineTo(-0.92, 0); ctx.lineTo(-1, -0.3); ctx.lineTo(-0.95, -0.3); ctx.closePath(); ctx.fill();
+      ctx.restore();
+      /* lights: red on the left wingtip, green on the right, a white double strobe, a red belly beacon */
+      const L = [-0.28 * s * tiny, 0.75 * s * tiny], wl = [hx * L[0] + hy2 * L[1], hy2 * L[0] - hx * L[1]], wr = [hx * L[0] - hy2 * L[1], hy2 * L[0] + hx * L[1]];
+      ctx.globalCompositeOperation = 'lighter';
+      const dot = (px, py, col, a, r) => { ctx.globalAlpha = a * fade; ctx.drawImage(glowS[col], px - r, py - r, r * 2, r * 2); };
+      ctx.fillStyle = '#ff3b3b'; ctx.globalAlpha = fade; ctx.fillRect(wl[0] - 1, wl[1] - 1, 2, 2); dot(wl[0], wl[1], 2, 0.8, 5);
+      ctx.fillStyle = '#3bff7a'; ctx.globalAlpha = fade; ctx.fillRect(wr[0] - 1, wr[1] - 1, 2, 2); dot(wr[0], wr[1], 0, 0.6, 5);
+      const st = (t + c.ph) % 1.2;
+      if (st < 0.05 || (st > 0.15 && st < 0.2)) { dot(wl[0], wl[1], 1, 1, 12); dot(wr[0], wr[1], 1, 1, 12); }
+      const bc = 0.5 + 0.5 * Math.sin((t + c.ph) * TAU);
+      ctx.fillStyle = '#ff2020'; ctx.globalAlpha = fade * bc; ctx.fillRect(-1.2, -1.2, 2.4, 2.4); dot(0, 0, 2, bc * 0.6, 7);
+      if (c.kind === 'banner') {
+        /* the banner, trailing on a tow line, always reading left to right */
+        ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = fade * (night ? 0.55 : 0.95);
+        ctx.font = `700 ${Math.round(s * 0.9)}px Outfit, "Segoe UI", sans-serif`;
+        const bw = ctx.measureText(c.msg).width + s * 1.2, bh = s * 1.35, rope = s * 1.8;
+        const bx = -hx * (rope + bw / 2), by = -hy2 * (rope + bw / 2) + Math.sin(t * 3) * 1.5;
+        ctx.strokeStyle = night ? 'rgba(200,210,255,.35)' : 'rgba(40,40,40,.5)'; ctx.lineWidth = 0.8;
+        ctx.beginPath(); ctx.moveTo(-hx * s * 0.6, -hy2 * s * 0.6); ctx.lineTo(bx + hx * bw / 2, by + hy2 * bw / 2); ctx.stroke();
+        ctx.fillStyle = night ? '#cfd6ea' : '#f7f2e6';
+        ctx.beginPath();
+        for (let i = 0; i <= 12; i++) { const k = i / 12, xx = bx - bw / 2 + bw * k; ctx.lineTo(xx, by - bh / 2 + Math.sin(t * 5 + k * 6) * 1.2); }
+        for (let i = 12; i >= 0; i--) { const k = i / 12, xx = bx - bw / 2 + bw * k; ctx.lineTo(xx, by + bh / 2 + Math.sin(t * 5 + k * 6) * 1.2); }
+        ctx.fill();
+        ctx.fillStyle = night ? '#6b1426' : '#c21f3a'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText(c.msg, bx, by + 1);
+      }
+    } else if (c.kind === 'ufo') {
+      const hover = u > 0.35 && u < 0.7 && !c.flee, r = s * 1.6;
+      if (hover) {
+        /* the tractor beam, down to the horizon */
+        const beamA = Math.sin((u - 0.35) / 0.35 * Math.PI) * fade;
+        const g = ctx.createLinearGradient(0, 0, 0, hy - y);
+        g.addColorStop(0, css(hex(p.glow), 0.35 * beamA)); g.addColorStop(1, css(hex(p.glow), 0));
+        ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 1; ctx.fillStyle = g;
+        ctx.beginPath(); ctx.moveTo(-r * 0.4, 0); ctx.lineTo(r * 0.4, 0); ctx.lineTo(r * 2.2, hy - y); ctx.lineTo(-r * 2.2, hy - y); ctx.closePath(); ctx.fill();
+      }
+      ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = fade;
+      const hull = ctx.createLinearGradient(0, -r * 0.3, 0, r * 0.3);
+      hull.addColorStop(0, '#c9d1e0'); hull.addColorStop(1, '#3a4152');
+      ctx.fillStyle = hull; ctx.beginPath(); ctx.ellipse(0, 0, r, r * 0.26, 0, 0, TAU); ctx.fill();
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.fillStyle = css(hex(p.glow), 0.7); ctx.beginPath(); ctx.ellipse(0, -r * 0.2, r * 0.42, r * 0.3, 0, Math.PI, 0); ctx.fill();
+      for (let i = 0; i < 7; i++) {
+        const a = i / 7 * TAU + t * 3, lx = Math.cos(a) * r * 0.8, on = Math.sin(a) > 0 ? 1 : 0.25;
+        ctx.globalAlpha = fade * on; ctx.drawImage(glowS[i % 3], lx - 4, r * 0.05 - 4, 8, 8);
+      }
+    } else if (c.kind === 'sleigh') {
+      /* Santa and nine reindeer, Rudolph up front */
+      ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = fade * 0.85; ctx.fillStyle = '#0b0d14'; ctx.strokeStyle = '#0b0d14'; ctx.lineWidth = 0.8;
+      const fx = hx < 0 ? -1 : 1, k = s * 0.5;
+      ctx.beginPath(); ctx.ellipse(0, 0, k * 1.6, k * 0.55, 0, 0, TAU); ctx.fill();
+      ctx.beginPath(); ctx.arc(-fx * k * 0.4, -k * 0.8, k * 0.45, 0, TAU); ctx.fill();
+      for (let i = 0; i < 9; i++) {
+        const rx = fx * k * (3 + i * 1.7), ry = Math.sin(t * 8 + i) * k * 0.2 - k * 0.2;
+        ctx.beginPath(); ctx.ellipse(rx, ry, k * 0.6, k * 0.25, 0, 0, TAU); ctx.fill();
+        ctx.beginPath(); ctx.moveTo(rx + fx * k * 0.5, ry); ctx.lineTo(rx + fx * k * 0.8, ry - k * 0.5); ctx.stroke();
+        if (i === 8) { ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = fade; ctx.drawImage(glowS[2], rx + fx * k * 0.9 - 5, ry - 5, 10, 10); ctx.fillStyle = '#ff2a2a'; ctx.fillRect(rx + fx * k * 0.9 - 1, ry - 1, 2, 2); }
+      }
+      ctx.beginPath(); ctx.moveTo(fx * k * 1.5, 0); ctx.lineTo(fx * k * 3, 0); ctx.stroke();
+    }
+    ctx.restore();
+    const text = c.kind === 'plane' ? '✈ ' + c.flight : c.kind === 'banner' ? `✈ "${c.msg}" · a banner plane, just for you`
+      : c.kind === 'ufo' ? '👽 Unidentified. It saw you.' : '🎅 Right on schedule. Be good.';
+    craftHit = { x, y, r: Math.max(48, s * 4), text, c };
+  }
+  /* a click on the sky: is there something up there? */
+  function hit(px, py) {
+    if (!craftHit || Math.hypot(px - craftHit.x, py - craftHit.y) > craftHit.r) return null;
+    if (craftHit.c.kind === 'ufo') craftHit.c.flee = 1;
+    return craftHit.text;
+  }
+  function summon(kind) { if (Store.get('planes')) spawnCraft(kind); }
+
   function paintStars(lst, vis, lite, p, now) {
     const ctx = starCv.getContext('2d');
     if (starCv.width !== cv.width || starCv.height !== cv.height) { starCv.width = cv.width; starCv.height = cv.height; }
@@ -405,7 +556,7 @@ window.Sky = (() => {
     ctx.setTransform(cv.width / W, 0, 0, cv.height / H, 0, 0);
     ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1;
     ctx.clearRect(0, 0, W, H);
-    const scint = Store.get('motion') === 'calm' ? 0.12 : 0.3;
+    const scint = Store.get('motion') === 'calm' ? 0.12 : 0.3, boost = Store.get('starsAlways') ? 1.8 : 1;
 
     /* Milky Way haze */
     if (vis > 0.02 && !lite) {
@@ -438,13 +589,13 @@ window.Sky = (() => {
         project(alt, az); if (P[2] < 0) { s.a = 0; continue; }
         const ext = sstep(-0.01, 0.35, salt), tw = 1 - scint * (0.5 + 0.5 * Math.sin(t * s.sp + s.ph)) * (1.4 - ext);
         s.x = P[0]; s.y = P[1];
-        s.a = Math.pow(clamp((6.9 - s.mag) / 5.2, 0.08, 1), 0.72) * vis * ext * tw;
+        s.a = Math.min(1, Math.pow(clamp((6.9 - s.mag) / 5.2, 0.08, 1), 0.72) * vis * ext * tw * boost);
         if (s.a > 0.01) buckets[s.col].push(s);
       }
       buckets.forEach((b, ci) => {
         ctx.fillStyle = css(STAR_COL[ci]);
         for (const s of b) {
-          const r = Math.max(0.7, (4.6 - s.mag) * 0.45);
+          const r = Math.max(boost > 1 ? 1.05 : 0.7, (4.6 - s.mag) * 0.45);
           ctx.globalAlpha = s.a;
           if (s.mag < 2.2) {
             const g = r * 7;
@@ -565,7 +716,7 @@ window.Sky = (() => {
     BG.sky({ zen, hor, sunP: glowP, sunC: glowC, sunA: glowA, horY: 1 - hy / H, yaw: cam.yaw, aur: (0.1 + 0.9 * dark) * (1 - cloud * (Store.get('motion') === 'wild' ? 0.35 : 0.75)) });
 
     ctx.clearRect(0, 0, W, H);
-    const vis = dark * (1 - cloud * 0.92);
+    const vis = dark * (1 - cloud * (Store.get('starsAlways') ? 0.3 : 0.92));
 
     /* the star field is the costly part (thousands of stars, each with its own trig): paint it into its
        own layer about ten times a second, and slide that layer with the camera in between */
@@ -583,6 +734,7 @@ window.Sky = (() => {
       }
       ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1;
       ctx.drawImage(starCv, ox, oy, W, H);
+      starOx = ox; starOy = oy;
     }
 
     /* satellites crossing the dark sky */
@@ -734,6 +886,13 @@ window.Sky = (() => {
       }
     }
     flash = Math.max(0, flash - dt / 380);
+
+    /* Stars through clouds: the star layer again, softly over the cloud deck */
+    if (Store.get('starsAlways') && cloud > 0.15 && vis > 0.01) {
+      ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = Math.min(0.75, cloud * 0.8);
+      ctx.drawImage(starCv, starOx, starOy, W, H); ctx.globalAlpha = 1;
+    }
+    drawCraft(dt, now, dark, cloud, p);
 
     /* mountains, a lake that holds the sky, and a pine shore */
     ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1;
@@ -964,5 +1123,5 @@ window.Sky = (() => {
   setWeather(Store.get('weather'));
   if (Store.get('weather') === 'live') fetchWeather();
 
-  return { resize, frame, locate, state: G, get dark() { return S.dark; }, get info() { return S.info; } };
+  return { resize, frame, locate, hit, summon, get craft() { return craft; }, state: G, get dark() { return S.dark; }, get info() { return S.info; } };
 })();

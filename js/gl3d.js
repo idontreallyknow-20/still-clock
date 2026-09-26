@@ -31,16 +31,23 @@ const composer = new EffectComposer(renderer);
 const wxPass = new RenderPass(wxScene, wxCam);
 const facePass = new RenderPass(faceScene, faceCam);
 facePass.clear = false; facePass.clearDepth = true;
-const bloom = new UnrealBloomPass(new THREE.Vector2(W, H), 0.62, 0.5, 0.34);
+const bloom = new UnrealBloomPass(new THREE.Vector2(W, H), 0.95, 0.6, 0.22);
 composer.addPass(wxPass); composer.addPass(facePass); composer.addPass(bloom); composer.addPass(new OutputPass());
 
 /* ---------- quality: resolution and effects follow QUALITY.tier (main.js steps it) ---------- */
 let pr = 1;
+/* the Glow setting (0..1.3, 1 = the original full look; 0.85 by default) scales the bloom, the time's shine and the halo ring;
+   with Dance to music on, the loudness breathes into the bloom too */
+const GK = { value: 1 };
+function applyGlow() {
+  const t = LITE() ? 3 : QUALITY.tier, g = Store.get('glow'), lvl = window.Listen ? Listen.level : 0;
+  GK.value = g;
+  bloom.strength = [0.95, 0.9, 0.8, 0.7][t] * g * (1 + lvl * 0.8);
+}
 function applyQuality() {
   const t = LITE() ? 3 : QUALITY.tier, dpr = devicePixelRatio || 1;
   pr = [Math.min(dpr, 1.5), Math.min(dpr, 1), 0.8, 0.66][t];
   bloom.enabled = !LITE();
-  bloom.strength = [0.62, 0.58, 0.52, 0.46][t];
   renderer.setPixelRatio(pr); composer.setPixelRatio(pr);
   resize();
 }
@@ -310,8 +317,8 @@ function timeLabel(face, w = 1024, h = 360) {
   const c = document.createElement('canvas'); c.width = w; c.height = h;
   const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 4;
   const mat = new THREE.MeshBasicMaterial({ ...ADD, map: tex, toneMapped: false, depthTest: false });
-  mat.color.setScalar(1.12);
   const mesh = new THREE.Mesh(new THREE.PlaneGeometry(1, h / w), mat);
+  mesh.onBeforeRender = () => mat.color.setScalar(1 + 0.45 * GK.value);
   mesh.renderOrder = 10;
   let last = '';
   mesh.draw = (main, sub) => {
@@ -326,8 +333,8 @@ function timeLabel(face, w = 1024, h = 360) {
     gr.addColorStop(0, p.t1); gr.addColorStop(1, p.t2);
     /* three passes: a wide bloom, a tight halo, then the crisp glyphs on top */
     g.fillStyle = gr; g.shadowColor = p.glow;
-    g.globalAlpha = 0.3; g.shadowBlur = fs * 0.26; g.fillText(main, w / 2, y);
-    g.globalAlpha = 0.6; g.shadowBlur = fs * 0.08; g.fillText(main, w / 2, y);
+    g.globalAlpha = 0.55; g.shadowBlur = fs * 0.34; g.fillText(main, w / 2, y);
+    g.globalAlpha = 0.9; g.shadowBlur = fs * 0.11; g.fillText(main, w / 2, y);
     g.globalAlpha = 1; g.shadowBlur = 0; g.fillText(main, w / 2, y);
     if (sub) { g.font = `300 ${h * 0.14}px "JetBrains Mono", Consolas, monospace`; g.fillStyle = p.t2; g.globalAlpha = 0.8; g.fillText(sub, w / 2, h * 0.82); g.globalAlpha = 1; }
     tex.needsUpdate = true;
@@ -557,14 +564,14 @@ void main() { float l = dot(normalize(vN), normalize(uL));
 
   /* ---- the gyroscope around the time: a photon ring, three arcs turning one way, a tick bezel the other ---- */
   const halo = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.ShaderMaterial({
-    ...ADD, uniforms: { uTime: GU.uTime, uFade: F.fade, uC: { value: new THREE.Color() }, uC2: { value: new THREE.Color() }, uGlow: { value: 0 } },
+    ...ADD, uniforms: { uTime: GU.uTime, uFade: F.fade, uC: { value: new THREE.Color() }, uC2: { value: new THREE.Color() }, uGlow: { value: 0 }, uGK: GK },
     vertexShader: `varying vec2 vUv; void main() { vUv = uv * 2. - 1.; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.); }`,
-    fragmentShader: `uniform float uTime, uFade, uGlow; uniform vec3 uC, uC2; varying vec2 vUv;
+    fragmentShader: `uniform float uTime, uFade, uGlow, uGK; uniform vec3 uC, uC2; varying vec2 vUv;
 const float TAU = 6.2831853;
 void main() { float r = length(vUv), a = atan(vUv.y, vUv.x);
   vec3 base = mix(uC, uC2, .5 + .5 * sin(a + uTime * .2));
   float fl = .8 + .2 * sin(a * 3. + uTime * .9) * sin(a * 5. - uTime * 1.3);
-  float ring = exp(-pow((r - .8) * 46., 2.)) * fl * .8 + exp(-pow((r - .8) * 8., 2.)) * .09;
+  float ring = exp(-pow((r - .8) * 46., 2.)) * fl * 1.25 * uGK + exp(-pow((r - .8) * 8., 2.)) * .16 * uGK;
   float a1 = mod(a - uTime * .22, TAU / 3.);
   float arcs = smoothstep(0., .03, a1) * smoothstep(1.45, 1.4, a1) * exp(-pow((r - .9) * 110., 2.));
   float a2 = mod(-a - uTime * .31, TAU / 2.);
@@ -929,6 +936,7 @@ function frame(dt, now) {
   if (!wxOn && !faceOn) { if (vis) { vis = false; canvas.classList.remove('on'); } return; }
   if (!vis) { vis = true; canvas.classList.add('on'); }
   facePass.enabled = faceOn;
+  applyGlow();
   composer.render(dt / 1000);
 }
 

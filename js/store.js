@@ -29,7 +29,8 @@ window.Store = (() => {
     lite: false, lockfs: false,
     brightness: 1, autoDim: false,
     alarmOn: false, alarmTime: '07:00',
-    spClient: '', showMusic: true, musicColors: true,
+    spClient: '', showMusic: true, musicColors: true, musicReact: false, reactGain: 1,
+    glow: 0.85, starsAlways: true, planes: true,
   };
   const VALID = {
     face: v => FACES.some(f => f[0] === v),
@@ -37,6 +38,8 @@ window.Store = (() => {
     motion: v => ['calm', 'normal', 'wild'].includes(v),
     size: v => v >= 0.5 && v <= 1.5,
     brightness: v => v >= 0.1 && v <= 1,
+    glow: v => v >= 0 && v <= 1.3,
+    reactGain: v => v >= 0.3 && v <= 2,
     alarmTime: v => /^([01]\d|2[0-3]):[0-5]\d$/.test(v),
     volume: v => v >= 0 && v <= 1,
     skyMode: v => ['real', 'timelapse'].includes(v),

@@ -14,6 +14,7 @@ window.UI = (() => {
     ]],
     ['Display', [
       { key: 'brightness', label: 'Brightness', type: 'range', min: 0.1, max: 1, step: 0.01 },
+      { key: 'glow', label: 'Glow', type: 'range', min: 0, max: 1.3, step: 0.01 },
       { key: 'autoDim', label: 'Dim at night', type: 'toggle' },
     ]],
     ['Alarm', [
@@ -25,10 +26,14 @@ window.UI = (() => {
       { key: 'weather', type: 'seg', opts: [['live', 'Live'], ['clear', 'Clear'], ['rain', 'Rain'], ['storm', 'Storm']] },
       { key: 'weather', type: 'seg', opts: [['snow', 'Snow'], ['blizzard', 'Blizzard'], ['fog', 'Fog']] },
       { key: 'lines', label: 'Constellations', type: 'toggle' },
+      { key: 'starsAlways', label: 'Stars through clouds', type: 'toggle' },
+      { key: 'planes', label: 'Planes overhead', type: 'toggle' },
     ]],
     ['Music · Spotify', [
       { key: 'showMusic', label: 'Now playing', type: 'toggle' },
       { key: 'musicColors', label: 'Colours from album art', type: 'toggle' },
+      { key: 'musicReact', label: 'Dance to music (mic)', type: 'toggle' },
+      { key: 'reactGain', label: 'Sensitivity', type: 'range', min: 0.3, max: 2, step: 0.01 },
       { type: 'custom', make: () => Spotify.row() },
     ]],
     ['Motion', [{ key: 'motion', type: 'seg', opts: [['calm', 'Calm'], ['normal', 'Normal'], ['wild', 'Wild']] }]],

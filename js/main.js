@@ -18,6 +18,10 @@
     BG.palette(p, instant);
   }
   window.StillPalette = () => { applyPalette(); UI.syncAll(); };
+  function applyGlowCss() {
+    const g = Store.get('glow'), pc = v => Math.round(Math.min(100, v * g)) + '%';
+    root.setProperty('--gk1', pc(80)); root.setProperty('--gk2', pc(38)); root.setProperty('--gk3', pc(55));
+  }
   function applyMotion() { body.classList.remove('m-calm', 'm-normal', 'm-wild'); body.classList.add('m-' + Store.get('motion')); }
   function applySize() { root.setProperty('--size', Store.get('size')); }
 
@@ -33,6 +37,7 @@
       case 'seconds': case 'h24': T = parts(new Date()); Faces.set(T, false); updateMeta(T); relayoutSoon(); setTimeout(Faces.placeMeta, 850); break;
       case 'date': body.classList.toggle('no-date', !v); break;
       case 'brightness': case 'autoDim': applyDim(); break;
+      case 'glow': applyGlowCss(); break;
       case 'alarmOn': if (v) { UI.toast('Alarm set for ' + Store.get('alarmTime'), 2200); Sound.init(); try { window.Notification && Notification.permission === 'default' && Notification.requestPermission(); } catch (e) {} } break;
       case 'alarmTime': if (Store.get('alarmOn')) UI.toast('Alarm set for ' + v, 2200); break;
       case 'weather': if (v === 'live') Sky.locate(); break;
@@ -188,6 +193,7 @@
     safe('sky', () => Sky.frame(dt, now));
     safe('particles', () => FX.frame(dt, now));
     safe('face', () => Faces.frame(dt, now, T));
+    safe('listen', () => Listen.frame(now));
     safe('3d', () => window.GL3D && GL3D.frame(dt, now));
     /* the Sky palette follows the real sky: recompute it every couple of seconds */
     if (Store.get('palette') === 'sky' && !window.MUSICPAL && now - lastPal > 2000) { lastPal = now; refreshSkyPalette(); safe('palette', () => applyPalette()); }
@@ -216,6 +222,8 @@
     if (Store.get('lockfs') && !document.fullscreenElement) { UI.enterFullscreen(); return; }
     if (e.target.closest('#panel, #gear')) return;
     if (UI.open) { UI.toggle(false); return; }
+    const up = Sky.hit(e.clientX, e.clientY);
+    if (up) UI.toast(up, 3200);
     BG.pulse(e.clientX, e.clientY, 0.5);
     FX.ring(e.clientX, e.clientY, { v: 5, w: 1, decay: 0.03 });
     Sound.pluck(e.clientX / innerWidth, e.clientY / innerHeight);
@@ -230,12 +238,16 @@
   }
   addEventListener('pointermove', active);
 
+  let konami = '';
   const cycle = (key, list) => { const i = list.indexOf(Store.get(key)); Store.set(key, list[(i + 1) % list.length]); };
   addEventListener('keydown', e => {
     if (e.ctrlKey || e.metaKey || e.altKey) return;
     wake(); active();
     if (Store.get('lockfs') && !document.fullscreenElement && e.key !== 'Escape') UI.enterFullscreen();
     const k = e.key.toLowerCase();
+    /* ↑↑↓↓←→←→BA: they come */
+    konami = (konami + ',' + k).split(',').slice(-10).join(',');
+    if (konami === 'arrowup,arrowup,arrowdown,arrowdown,arrowleft,arrowright,arrowleft,arrowright,b,a') { Sky.summon('ufo'); UI.toast('👽 Incoming', 2400); konami = ''; }
     if (k === 's') UI.toggle();
     else if (k === 'escape') { if (Alarm.ringing) Alarm.stop(false); else UI.open && UI.toggle(false); }
     else if (k === 'arrowup' || k === 'arrowdown') {
@@ -260,7 +272,7 @@
 
   /* ---------- boot ---------- */
   if (Store.get('palette') === 'sky') refreshSkyPalette();
-  applyPalette(true); applyMotion(); applySize(); applyDim();
+  applyPalette(true); applyMotion(); applySize(); applyDim(); applyGlowCss();
   body.classList.toggle('no-date', !Store.get('date'));
   body.classList.toggle('lite', Store.get('lite'));
   fsState();
@@ -268,6 +280,7 @@
   safe('face', () => Faces.show(Store.get('face'), T, true));
   raf(loop);
   safe('music', () => Spotify.init());
+  safe('listen', () => Listen.init());
   setTimeout(() => body.classList.remove('booting'), 50);
   setTimeout(() => { const a = Faces.anchor(); BG.pulse(a.x, a.y, 1); }, 900);
   document.fonts && document.fonts.ready.then(() => safe('face', Faces.relayout));

@@ -52,7 +52,7 @@ body.no-date #date, body.no-date #progress { opacity: 0; }
 /* liquid glass: a bright crown fading into tinted glass, a crisp rim of light, and a two-stage glow.
    Nothing here animates while the time is still, so the digits cost nothing between changes. */
 .g-time { display: flex; position: relative;
-  filter: drop-shadow(0 0 .02em color-mix(in srgb, var(--glow) 55%, transparent)) drop-shadow(0 .04em .24em color-mix(in srgb, var(--glow) 22%, transparent)); }
+  filter: drop-shadow(0 0 .025em color-mix(in srgb, var(--glow) var(--gk1, 80%), transparent)) drop-shadow(0 .04em .28em color-mix(in srgb, var(--glow) var(--gk2, 38%), transparent)); }
 .g-sec { display: flex; font-size: .34em; margin-left: .25em; margin-top: .22em; opacity: .75; }
 .g-sec:empty { margin: 0; }
 .slot { position: relative; display: inline-block; width: .6em; height: 1em; transform-style: preserve-3d; }
@@ -124,7 +124,7 @@ body.m-wild .ch.out { animation: g-out-wild .8s var(--ease) both; }
 .card .b { bottom: 0; border-radius: 0 0 .09em .09em;
   background: linear-gradient(180deg, color-mix(in srgb, var(--a2) 8%, #15161d), color-mix(in srgb, var(--a2) 14%, #0e0f14)); }
 .card b { position: absolute; left: 0; right: 0; height: 200%; display: flex; align-items: center; justify-content: center; font-weight: 500;
-  color: var(--t1); text-shadow: 0 0 .1em color-mix(in srgb, var(--glow) 35%, transparent); }
+  color: var(--t1); text-shadow: 0 0 .12em color-mix(in srgb, var(--glow) var(--gk3, 55%), transparent); }
 .card .t b, .card .f b { top: 0; }
 .card .b b, .card .k b { bottom: 0; }
 .card .leaf { position: absolute; left: 0; right: 0; top: 0; height: 50%; transform-origin: 50% 100%; transform-style: preserve-3d; z-index: 3; visibility: hidden; }
