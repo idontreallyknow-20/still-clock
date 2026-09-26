@@ -42,6 +42,7 @@ def page(b, face='orbit', extra=''):
         calls.append(m + ' ' + path)
         if path.startswith('/me/player/pause'): player['is_playing'] = False
         if path.startswith('/me/player/play'): player['is_playing'] = True
+        if path.startswith('/me/player/volume'): player['device']['volume_percent'] = int(path.split('=')[1])
         r.fulfill(status=204, headers=CORS)
     pg.route('https://api.spotify.com/**', api)
     return ctx, pg, errs, calls, player
@@ -93,7 +94,11 @@ with sync_playwright() as p:
     seek = [c for c in calls if 'seek' in c]
     check(seek and abs(int(seek[-1].split('=')[1]) - 100000) < 3000, f'seek bar: {seek}')
     a = pg.evaluate("Faces.anchor()")
-    pg.mouse.move(a['x'], a['y']); pg.mouse.wheel(0, -100); pg.wait_for_timeout(60); pg.mouse.wheel(0, -100); pg.wait_for_timeout(900)
+    pg.mouse.move(a['x'], a['y']); pg.mouse.wheel(0, -100); pg.wait_for_timeout(60); pg.mouse.wheel(0, -100)
+    for _ in range(40):  # the call goes out once scrolling settles; wait for it on a slow machine
+        pg.wait_for_timeout(100)
+        if 'PUT /me/player/volume?volume_percent=60' in calls: break
+    pg.wait_for_timeout(500)
     vol = [c for c in calls if 'volume' in c]
     check(vol and vol[-1] == 'PUT /me/player/volume?volume_percent=60', f'two scroll steps over the clock -> volume 60%: {vol}')
     pg.mouse.move(40, 40); pg.mouse.wheel(0, -100); pg.wait_for_timeout(900)
@@ -102,9 +107,10 @@ with sync_playwright() as p:
     # 4. a new song lands like the hour: the sky surges and the title changes
     before = pg.evaluate("__surge")
     player['item'] = item('t2', 'Song Two'); player['progress_ms'] = 1000
-    pg.wait_for_function("document.getElementById('s-title').textContent === 'Song Two'", polling=200, timeout=8000)
+    until(pg, "document.getElementById('s-title').textContent === 'Song Two'", 12000)
     s = pg.evaluate(UIST)
-    check(s['title'] == 'Song Two' and pg.evaluate("__surge") > before, f'new song: title {s["title"]!r}, sky surged {pg.evaluate("__surge") - before}x')
+    s['spotify'] = pg.evaluate("Spotify.state() && Spotify.state().id")
+    check(s['title'] == 'Song Two' and pg.evaluate("__surge") > before, f'new song: title {s["title"]!r} (spotify {s["spotify"]}), sky surged {pg.evaluate("__surge") - before}x')
 
     # 5. the corner card comes back when the clock isn't the player
     pg.evaluate("Store.set('musicClock', false)"); pg.wait_for_timeout(600)

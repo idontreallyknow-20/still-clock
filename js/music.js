@@ -6,7 +6,7 @@
    Keys: J previous · K play or pause · L next. Scroll over the clock for Spotify's volume. */
 window.Music = (() => {
   const $ = id => document.getElementById(id), body = document.body, root = document.documentElement.style;
-  const song = $('song'), glow = $('m-glow');
+  const song = $('song'), glow = $('m-glow'), head = song.querySelector('.s-head'), tip = song.querySelector('.s-tip');
   const inClock = () => Store.get('showMusic') && Store.get('musicClock');
   let lastId = '', lastPlaying = null, lastArt = '', shown = false, glowSide = 0;
 
@@ -83,7 +83,8 @@ window.Music = (() => {
     body.classList.toggle('music-playing', st.playing);
     song.classList.toggle('paused', !st.playing);
     document.querySelectorAll('.m-pbar').forEach(el => el.style.transform = `scaleX(${st.p.toFixed(4)})`);
-    $('s-pos').textContent = fmt(st.pos) + ' / ' + fmt(st.dur);
+    head.style.left = (st.p * 100).toFixed(2) + '%';
+    $('s-pos').textContent = fmt(st.pos); $('s-dur').textContent = fmt(st.dur);
     $('s-end').textContent = st.playing ? 'ends ' + clockAt(st.dur - st.pos) : 'paused';
     /* the glow sits behind the clock and is sized to it */
     const a = Faces.anchor(), s = Math.min(innerWidth, innerHeight) * 0.78 * Store.get('size');
@@ -112,7 +113,9 @@ window.Music = (() => {
     volTarget = Math.max(0, Math.min(100, (volTarget ?? st.vol) + (e.deltaY < 0 ? 5 : -5)));
     UI.toast('Spotify volume ' + volTarget + '%');
     clearTimeout(volT);
-    volT = setTimeout(() => { Spotify.volume(volTarget); volTarget = null; }, 320);
+    /* send once the scrolling settles; keep counting from our own number a while longer, since Spotify's
+       player can still report the old volume for a poll or two after the change */
+    volT = setTimeout(() => { Spotify.volume(volTarget); volT = setTimeout(() => { volTarget = null; }, 2500); }, 320);
   }
 
   function init() {
@@ -124,6 +127,13 @@ window.Music = (() => {
       if (bar) { const r = bar.getBoundingClientRect(); Spotify.seek((e.clientX - r.left) / r.width); Sound.ui('click'); }
     });
     addEventListener('wheel', wheel, { passive: false });
+    /* hovering the seek bar shows the time you would jump to */
+    const bar = song.querySelector('.s-bar');
+    bar.addEventListener('pointermove', e => {
+      const st = Spotify.state(); if (!st) return;
+      const r = bar.getBoundingClientRect(), f = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width));
+      tip.textContent = fmt(f * st.dur); tip.style.left = (f * 100).toFixed(2) + '%';
+    });
     Store.on(k => { if (k === 'musicClock' || k === 'showMusic') tick(); });
     setInterval(tick, 250);
     tick();
