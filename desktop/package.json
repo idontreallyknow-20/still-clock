@@ -1,0 +1,12 @@
+{
+  "name": "still-desktop",
+  "private": true,
+  "description": "Still as a desktop app that stays on top of everything, taskbar included.",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron ."
+  },
+  "devDependencies": {
+    "electron": "^44.0.0"
+  }
+}
